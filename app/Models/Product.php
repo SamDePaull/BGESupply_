@@ -7,9 +7,36 @@ use Illuminate\Database\Eloquent\Model;
 class Product extends Model
 {
     protected $fillable = [
-        'name','sku','price','cost_price','stock','image_url',
-        'origin','origin_id','shopify_product_id','is_from_shopify','sync_status',
+        'title',
+        'description',
+        'sku',
+        'price',
+        'inventory_quantity',
+        'tags',
+        'vendor',
+        'options_schema',
+        'option1_name',
+        'option2_name',
+        'option3_name',
+        'shopify_product_id',
+        'sync_status',
+        'last_synced_at',
+        'last_error',
+        'shopify_updated_at',
     ];
+
+    protected $casts = [
+        'options_schema' => 'array',
+        'last_synced_at' => 'datetime',
+        'shopify_updated_at' => 'datetime',
+        'price' => 'decimal:2',
+    ];
+
+    // Default nilai agar kalau field tidak dikirim, tetap 0
+    protected $attributes = [
+        'inventory_quantity' => 0,
+    ];
+
 
     // Contoh relasi ke item penjualan (POS)
     public function saleItems()
@@ -43,5 +70,35 @@ class Product extends Model
     {
         return (int) $this->stock <= (int) config('inventory.low_stock_threshold', 5);
     }
+    public function markDirty(string $reason = null): void
+    {
+        $this->sync_status = 'dirty';
+        if ($reason) {
+            $this->last_error = $reason; // keep latest reason for visibility
+        }
+        $this->saveQuietly();
+    }
 
+
+    /** Scope: dirty rows only. */
+    public function scopeDirty($q)
+    {
+        return $q->where('sync_status', 'dirty');
+    }
+
+    public function syncLogs()
+    {
+        return $this->hasMany(\App\Models\SyncLog::class);
+    }
+
+    public function variants()
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    public function setInventoryQuantityAttribute($value): void
+    {
+        $this->attributes['inventory_quantity'] =
+            ($value === null || $value === '') ? 0 : (int) $value;
+    }
 }

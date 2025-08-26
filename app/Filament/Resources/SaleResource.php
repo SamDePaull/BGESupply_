@@ -21,11 +21,17 @@ use Filament\Tables\Actions\ViewAction;
 
 class SaleResource extends Resource
 {
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false; // tetap bisa diakses via URL, tapi tidak muncul di sidebar
+    }
+
+
     protected static ?string $model = Sale::class;
     protected static ?string $navigationIcon = 'heroicon-o-receipt-percent';
     protected static ?string $navigationLabel = 'POS Sales';
 
-        public static function canViewAny(): bool
+    public static function canViewAny(): bool
     {
         return Perm::can('sales.view');
     }

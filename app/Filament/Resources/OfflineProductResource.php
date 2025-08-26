@@ -30,6 +30,11 @@ use Filament\Tables\Actions\BulkAction;
 
 class OfflineProductResource extends Resource
 {
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false; // tetap bisa diakses via URL, tapi tidak muncul di sidebar
+    }
+
     protected static ?string $model = OfflineProduct::class;
     protected static ?string $navigationIcon = 'heroicon-o-archive-box';
     protected static ?string $navigationLabel = 'Offline Products';
@@ -95,7 +100,7 @@ class OfflineProductResource extends Resource
                                 }
 
                                 $exists = \App\Models\Product::where('sku', $value)
-                                    ->when($unifiedId, fn ($q) => $q->where('id', '!=', $unifiedId))
+                                    ->when($unifiedId, fn($q) => $q->where('id', '!=', $unifiedId))
                                     ->exists();
 
                                 if ($exists) {
@@ -157,7 +162,9 @@ class OfflineProductResource extends Resource
                     ->requiresConfirmation()
                     ->action(function ($records) {
                         $svc = app(\App\Services\OfflineProductService::class);
-                        $ok = 0; $skip = 0; $fail = 0;
+                        $ok = 0;
+                        $skip = 0;
+                        $fail = 0;
 
                         foreach ($records as $rec) {
                             $unified = \App\Models\Product::where([

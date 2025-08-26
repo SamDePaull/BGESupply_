@@ -11,7 +11,12 @@ class Kernel extends ConsoleKernel
      *
      * @var array
      */
-    protected $commands = [];
+    protected $commands = [
+        \App\Console\Commands\ShopifyHealthCommand::class,
+        \App\Console\Commands\ShopifyPullCommand::class,
+        \App\Console\Commands\ShopifyUpdateOneCommand::class,
+        \App\Console\Commands\ShopifyLocationsCommand::class,
+    ];
 
     /**
      * Define the application's command schedule.

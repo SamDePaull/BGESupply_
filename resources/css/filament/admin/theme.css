@@ -1,0 +1,26 @@
+/* Lebar sidebar sedikit lebih lega */
+:root {
+    --sidebar-width: 270px;
+}
+/* Brand area lebih kontras */
+.fi-sidebar-header {
+    background: linear-gradient(90deg, #f59e0b 0%, #f97316 100%);
+    color: white;
+}
+.fi-sidebar-header .fi-brand {
+    color: white !important;
+}
+/* Item sidebar rounded & hover halus */
+.fi-sidebar .fi-sidebar-item {
+    border-radius: 0.75rem;
+}
+.fi-sidebar .fi-sidebar-item:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+}
+/* Dark mode tweak */
+.dark .fi-sidebar-header {
+    background: linear-gradient(90deg, #0ea5e9 0%, #6366f1 100%);
+}
+.dark .fi-sidebar .fi-sidebar-item:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}

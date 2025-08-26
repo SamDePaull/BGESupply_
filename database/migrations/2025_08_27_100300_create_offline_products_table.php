@@ -6,27 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('offline_products', function (Blueprint $table) {
-            $table->id();
+            $table->bigIncrements('id');
             $table->string('name');
-            $table->string('sku')->unique();
-            $table->decimal('price', 12, 2);
-            $table->decimal('cost_price', 12, 2)->nullable();
+            $table->decimal('price', 12, 2)->default(0);
             $table->integer('stock')->default(0);
+            $table->string('vendor')->nullable();
+            $table->string('tags')->nullable();
             $table->string('image_url')->nullable();
-            $table->json('attributes')->nullable(); // warna/ukuran bebas
+            $table->json('attributes')->nullable();
             $table->timestampsTz();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('offline_products');

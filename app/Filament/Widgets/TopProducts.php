@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 
 class TopProducts extends BaseWidget
 {
-    protected int|string|array $columnSpan = 'full';
+    protected int|string|array $columnSpan = "full";
     protected static ?string $heading = 'Produk Terlaris (Top 10)';
 
     protected function getTableQuery(): Builder

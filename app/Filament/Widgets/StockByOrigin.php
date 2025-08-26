@@ -8,7 +8,7 @@ use Filament\Widgets\ChartWidget;
 class StockByOrigin extends ChartWidget
 {
     protected static ?string $heading = 'Stok Berdasarkan Asal';
-    protected int|string|array $columnSpan = 'full';
+    protected int|string|array $columnSpan = 6;
 
     protected function getData(): array
     {

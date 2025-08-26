@@ -6,24 +6,19 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('orders', function (Blueprint $table) {
-            $table->id();
+            $table->bigIncrements('id');
             $table->string('source'); // offline|shopify
-            $table->string('order_number')->unique();
+            $table->unsignedBigInteger('external_id')->nullable()->index(); // shopify order id
+            $table->string('customer_name')->nullable();
             $table->decimal('total_price', 12, 2)->default(0);
-            $table->json('raw_response')->nullable(); // payload Shopify order
+            $table->json('raw_response')->nullable();
             $table->timestampsTz();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('orders');

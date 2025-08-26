@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\Route;
 use App\Services\ShopifyService;
 use App\Jobs\SyncShopifyProducts;
@@ -14,26 +15,13 @@ Route::get('/', function () {
     return view('welcome');
 });
 
-Route::middleware('auth')->group(function () {
-    Route::get('/sync-shopify-now', function (ShopifyService $svc) {
-        $count = $svc->pullAndIngest();
-        return "Synced {$count} products.";
-    })->name('shopify.sync.now');
-
-    Route::post('/queue-sync-shopify', function () {
-        dispatch(new SyncShopifyProducts());
-        return 'Queued.';
-    });
-
-    Route::post('/queue-push-product/{product}', function (Product $product) {
-        dispatch(new PushProductToShopify($product));
-        return 'Push queued.';
-    });
-});
-
-Route::post('/webhooks/shopify', [ShopifyWebhookController::class, 'handle'])
-    ->name('shopify.webhooks'); // set URL ini di admin Shopify Webhooks
+Route::post('api/webhooks/shopify', [ShopifyWebhookController::class, 'handle'])->withoutMiddleware(VerifyCsrfToken::class);;
 
 Route::middleware(['auth'])->group(function () {
     Route::get('/export/products.csv', [ExportController::class, 'productsCsv'])->name('export.products.csv');
 });
+
+
+Route::get('/debug/session/set', fn() => tap(session(['ping'=>now()->toDateTimeString()]), fn() => print 'set'));
+Route::get('/debug/session/get', fn() => 'ping='.session('ping'));
+
