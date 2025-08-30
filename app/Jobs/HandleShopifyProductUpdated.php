@@ -12,12 +12,9 @@ use Illuminate\Queue\SerializesModels;
 class HandleShopifyProductUpdated implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
     public function __construct(public int $shopifyProductId) {}
-
     public function handle(ShopifyService $svc): void
     {
-        // gunakan method yang sudah ada
         $svc->pullSingleProductAndIngest($this->shopifyProductId);
     }
 }

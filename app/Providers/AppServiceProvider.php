@@ -24,7 +24,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Sale::observe(SaleObserver::class);
+        // Sale::observe(SaleObserver::class);
         Product::observe(ProductObserver::class);
     }
 }

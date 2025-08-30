@@ -1,6 +1,11 @@
 <x-filament::page>
-    <form wire:submit.prevent="save" class="space-y-6">
+    <x-filament::section>
+        <x-slot name="heading">Default Location</x-slot>
         {{ $this->form }}
-        <x-filament::button type="submit" icon="heroicon-o-check-circle">Save</x-filament::button>
-    </form>
+        <div class="mt-4">
+            <x-filament::button wire:click="save">
+                Simpan
+            </x-filament::button>
+        </div>
+    </x-filament::section>
 </x-filament::page>

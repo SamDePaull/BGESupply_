@@ -6,47 +6,52 @@ use App\Models\Setting;
 use App\Services\ShopifyInventoryService;
 use Filament\Forms;
 use Filament\Pages\Page;
-use Filament\Notifications\Notification;
 
 class ShopifySettings extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
+    protected static ?string $navigationGroup = 'Shopify';
     protected static string $view = 'filament.pages.shopify-settings';
-    protected static ?string $navigationGroup = 'Settings';
     protected static ?string $title = 'Shopify Settings';
+
     public ?int $location_id = null;
-    public function mount(): void
-    {
-        $saved = Setting::get('shopify.location_id');
-        $this->location_id = is_array($saved) ? ($saved['id'] ?? null) : (is_numeric($saved) ? (int)$saved : null);
-    }
+
     protected function getFormSchema(): array
     {
-        $svc = app(ShopifyInventoryService::class);
-        $options = [];
-        foreach ($svc->listLocations() as $loc) {
-            $label = $loc['name'];
-            if (!empty($loc['primary'])) $label .= ' (primary)';
-            $options[$loc['id']] = $label;
-        }
         return [
             Forms\Components\Select::make('location_id')
-                ->label('Default Shopify Location')
-                ->options($options)
+                ->label('Default Location')
+                ->required()
+                ->options(function () {
+                    $svc = app(ShopifyInventoryService::class);
+                    $out = [];
+                    foreach ($svc->listLocations() as $l) {
+                        $id = (int)($l['id'] ?? 0);
+                        $name = (string)($l['name'] ?? 'Unknown');
+                        $active = !empty($l['active']) ? '' : ' (inactive)';
+                        if ($id) $out[$id] = "{$name}{$active}";
+                    }
+                    return $out;
+                })
                 ->searchable()
-                ->required(),
+                ->preload()
+                ->helperText('Lokasi ini akan dipakai untuk push stok (inventory_levels/set).'),
         ];
     }
+
+    public function mount(): void
+    {
+        $val = Setting::get('shopify.location_id');
+        $this->location_id = is_array($val) ? (int)($val['id'] ?? 0) : (int)($val ?? 0);
+    }
+
     public function save(): void
     {
-        if (!$this->location_id) {
-            Notification::make()->danger()->title('Select a location')->send();
-            return;
-        }
+        $id = (int)$this->location_id;
+        $name = (string)collect(app(ShopifyInventoryService::class)->listLocations())
+            ->firstWhere('id', $id)['name'] ?? 'Unknown';
 
-        // simpan sebagai integer saja
-        Setting::set('shopify.location_id', (int) $this->location_id);
-
-        Notification::make()->success()->title('Default location saved')->send();
+        Setting::set('shopify.location_id', ['id' => $id, 'name' => $name]);
+        $this->dispatch('notification', type: 'success', title: 'Tersimpan', body: "Default location: {$name} ({$id})");
     }
 }

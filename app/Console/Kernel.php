@@ -1,9 +1,11 @@
 <?php
 
 namespace App\Console;
+
 use App\Jobs\SyncShopifyProducts;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+
 class Kernel extends ConsoleKernel
 {
     /**
@@ -16,6 +18,11 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\ShopifyPullCommand::class,
         \App\Console\Commands\ShopifyUpdateOneCommand::class,
         \App\Console\Commands\ShopifyLocationsCommand::class,
+        \App\Console\Commands\PullShopifyCategories::class,
+        \App\Console\Commands\PullShopifyCollections::class,
+        \App\Console\Commands\PushInventoryCommand::class,
+        \App\Console\Commands\BackfillInventoryIds::class,
+        \App\Console\Commands\InventoryDoctorCommand::class,
     ];
 
     /**
@@ -40,6 +47,6 @@ class Kernel extends ConsoleKernel
     protected function commands(): void
     {
         // Load the commands from the specified directory
-        $this->load(__DIR__.'/Commands');
+        $this->load(__DIR__ . '/Commands');
     }
 }

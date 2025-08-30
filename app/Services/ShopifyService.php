@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\ShopifyProductStaging;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -17,11 +19,12 @@ class ShopifyService
     public function __construct()
     {
         $this->shop    = trim(config('services.shopify.shop', ''));
-        $this->version = trim(config('services.shopify.version', '2024-07'));
+        // Samakan default versi API dengan konfigurasi terbaru
+        $this->version = trim(config('services.shopify.version', '2025-07'));
         $token         = trim(config('services.shopify.token', ''));
 
         if ($this->shop === '' || $token === '') {
-            throw new \RuntimeException('Shopify config missing: set SHOPIFY_SHOP & SHOPIFY_TOKEN in .env');
+            throw new \RuntimeException('Shopify config missing. Pastikan values di config/services.php (env: SHOPIFY_*).');
         }
         // SHOPIFY_SHOP harus subdomain saja (tanpa .myshopify.com)
         if (Str::contains($this->shop, '.')) {
@@ -59,10 +62,11 @@ class ShopifyService
     {
         $count    = 0;
         $endpoint = 'products.json?limit=250';
+        $status   = null;
 
         do {
-            $json = $this->request('GET', $endpoint, [], $status);
-            $data = json_decode($json, true);
+            $json  = $this->request('GET', $endpoint, [], $status);
+            $data  = json_decode($json, true);
             $items = $data['products'] ?? [];
 
             foreach ($items as $p) {
@@ -94,16 +98,16 @@ class ShopifyService
     protected function request(string $method, string $uri, array $options = [], ?array &$statusOut = null): string
     {
         try {
-            $resp = $this->http->request($method, $uri, $options);
-            $code = $resp->getStatusCode();
+            $resp    = $this->http->request($method, $uri, $options);
+            $code    = $resp->getStatusCode();
             $headers = [
-                'link' => $resp->getHeaderLine('Link'),
-                'ratelimit' => $resp->getHeaderLine('X-Shopify-Shop-Api-Call-Limit'),
+                'link'       => $resp->getHeaderLine('Link'),
+                'ratelimit'  => $resp->getHeaderLine('X-Shopify-Shop-Api-Call-Limit'),
                 'retryafter' => $resp->getHeaderLine('Retry-After'),
             ];
-            if (is_array($statusOut)) {
-                $statusOut = ['code' => $code] + $headers;
-            }
+
+            // Set selalu $statusOut agar caller bisa akses header pagination
+            $statusOut = ['code' => $code] + $headers;
 
             $body = (string) $resp->getBody();
 
@@ -132,23 +136,23 @@ class ShopifyService
         }
     }
 
-    protected function trim(string $s, int $len = 400): string
+    protected function trim(string $state, int $len = 400): string
     {
-        $s = trim($s);
-        return mb_strlen($s) > $len ? (mb_substr($s, 0, $len) . '…') : $s;
+        $state = trim($state);
+        return mb_strlen($state) > $len ? (mb_substr($state, 0, $len) . '…') : $state;
     }
 
     /** Parse Link header untuk cursor pagination (returns relative path untuk base_uri Guzzle) */
     protected function nextLinkFromHeader(?string $linkHeader): ?string
     {
         if (!$linkHeader) return null;
-        // Contoh: <https://shop.myshopify.com/admin/api/2024-07/products.json?limit=250&page_info=abc>; rel="next", <...>; rel="previous"
+        // Contoh: <https://shop.myshopify.com/admin/api/2025-07/products.json?limit=250&page_info=abc>; rel="next", <...>; rel="previous"
         foreach (explode(',', $linkHeader) as $part) {
             if (str_contains($part, 'rel="next"')) {
-                if (preg_match('/<([^>]+)>;\\s*rel="next"/i', trim($part), $m)) {
-                    $url = $m[1];
+                if (preg_match('/<([^>]+)>;\s*rel="next"/i', trim($part), $m)) {
+                    $url    = $m[1];
                     $needle = '/admin/api/' . $this->version . '/';
-                    $pos = strpos($url, $needle);
+                    $pos    = strpos($url, $needle);
                     return $pos !== false ? substr($url, $pos + strlen($needle)) : $url;
                 }
             }
@@ -161,7 +165,19 @@ class ShopifyService
     {
         $variants = $payload['variants'] ?? [];
         $first    = $variants[0] ?? [];
-        $sku      = $first['sku'] ?? null;
+
+        // ---- BARU: simpan salinan payload ke tabel staging agar halaman Shopify Staging ikut berubah ----
+        ShopifyProductStaging::updateOrCreate(
+            ['shopify_product_id' => (int) ($payload['id'] ?? 0)],
+            [
+                'handle'  => $payload['handle'] ?? null,
+                'title'   => $payload['title'] ?? null,
+                'payload' => $payload,
+                'status'  => 'pulled',
+            ]
+        );
+        // -------------------------------------------------------------------------------------------------
+
         $tagsRaw  = $payload['tags'] ?? null;
         $tags     = is_array($tagsRaw) ? implode(',', $tagsRaw) : $tagsRaw;
 
@@ -174,15 +190,37 @@ class ShopifyService
             }
         }
 
+        // Ambil harga minimum antar varian sebagai price produk (lebih representatif)
+        $allPrices = array_values(array_filter(array_map(
+            fn($v) => isset($v['price']) ? (float) $v['price'] : null,
+            $variants
+        )));
+        $minPrice = !empty($allPrices)
+            ? min($allPrices)
+            : (isset($first['price']) ? (float) $first['price'] : 0);
+
+        // Map status/publish
+        $statusFromPayload = $payload['status'] ?? null; // 'active' | 'draft' | 'archived'
+        $publishedAtStr    = $payload['published_at'] ?? null;
+        $publishedAt       = $publishedAtStr ? Carbon::parse($publishedAtStr) : null;
+        $computedStatus    = $statusFromPayload ?: ($publishedAt ? 'active' : 'draft');
+
+        $sku = $first['sku'] ?? null;
+
         $row = [
             'title'              => $payload['title'] ?? null,
+            'handle'             => $payload['handle'] ?? null,
             'description'        => $payload['body_html'] ?? null,
             'vendor'             => $payload['vendor'] ?? null,
+            'product_type'       => $payload['product_type'] ?? null,
             'tags'               => $tags,
             'sku'                => $sku, // fallback single-variant view
-            'price'              => isset($first['price']) ? (string) $first['price'] : '0.00',
+            'price'              => number_format($minPrice, 2, '.', ''),
+            'compare_at_price'   => isset($first['compare_at_price']) ? (string) $first['compare_at_price'] : null,
             'inventory_quantity' => $first['inventory_quantity'] ?? 0,
             'shopify_product_id' => $payload['id'] ?? null,
+            'status'             => $computedStatus,   // <-- BARU
+            'published_at'       => $publishedAt,      // <-- BARU
             'sync_status'        => 'synced',
             'last_synced_at'     => now(),
             'updated_at'         => now(),
@@ -205,12 +243,15 @@ class ShopifyService
             if (!$p && $sku) {
                 $p = \App\Models\Product::where('sku', $sku)->first();
             }
+
             if ($p) {
                 // sinkronkan semua varian
                 foreach ($variants as $sv) {
                     $match = \App\Models\ProductVariant::where('product_id', $p->id)
                         ->where(function ($q) use ($sv) {
-                            if (!empty($sv['sku'])) $q->orWhere('sku', $sv['sku']);
+                            if (!empty($sv['sku'])) {
+                                $q->orWhere('sku', $sv['sku']);
+                            }
                             $q->orWhere(function ($qq) use ($sv) {
                                 $qq->where('option1_value', $sv['option1'] ?? null)
                                     ->where('option2_value', $sv['option2'] ?? null)

@@ -37,12 +37,22 @@ return [
 
     'shopify' => [
         'key'   => env('SHOPIFY_API_KEY'),
-        'secret'=> env('SHOPIFY_API_SECRET'),
+        'secret' => env('SHOPIFY_API_SECRET'),
         'token' => env('SHOPIFY_ACCESS_TOKEN'),
-        'shop'=> env('SHOPIFY_STORE_DOMAIN'),
-        'webhook_secret'=> env('SHOPIFY_WEBHOOK_SECRET'),
+        'shop' => env('SHOPIFY_STORE_DOMAIN'),
+        'webhook_secret' => env('SHOPIFY_WEBHOOK_SECRET'),
         'location_id' => env('SHOPIFY_LOCATION_ID'),
         'version' => env('SHOPIFY_API_VERSION'),
+    ],
+
+    'midtrans' => [
+        'server_key' => env('MIDTRANS_SERVER_KEY'),
+        'production' => (bool) env('MIDTRANS_PRODUCTION', false),
+    ],
+
+    'whatsapp' => [
+        'token' => env('WA_TOKEN'), // Meta Cloud API token
+        'phone_number_id' => env('WA_PHONE_NUMBER_ID'), // 1XXXXXXXX
     ],
 
 

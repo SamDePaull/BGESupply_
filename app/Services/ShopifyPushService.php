@@ -2,14 +2,9 @@
 
 namespace App\Services;
 
-use App\Exceptions\ShopifyHttpException;
 use App\Models\Product;
-use App\Models\ProductVariant;
 use App\Models\SyncLog;
 use GuzzleHttp\Client;
-use GuzzleHttp\Exception\RequestException;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class ShopifyPushService
@@ -18,289 +13,447 @@ class ShopifyPushService
     protected string $base;
     protected string $version;
     protected string $shop;
+    protected string $token;
+
     public function __construct()
     {
-        $this->shop = trim(config('services.shopify.shop', ''));
-        $this->version = trim(config('services.shopify.version', '2024-07'));
-        $token = trim(config('services.shopify.token', ''));
-        if ($this->shop === '' || $token === '') {
-            throw new \RuntimeException('Shopify config missing: set
-SHOPIFY_SHOP & SHOPIFY_TOKEN in .env');
+        $this->shop    = trim(config('services.shopify.shop', ''));
+        $this->version = trim(config('services.shopify.version', '2025-07'));
+        $this->token   = trim(config('services.shopify.token', ''));
+
+        if ($this->shop === '' || $this->token === '') {
+            throw new \RuntimeException('Set SHOPIFY_STORE_DOMAIN & SHOPIFY_ACCESS_TOKEN (lihat config/services.php).');
         }
         if (Str::contains($this->shop, '.')) {
             $this->shop = explode('.', $this->shop)[0];
         }
+
         $this->base = "https://{$this->shop}.myshopify.com/admin/api/{$this->version}/";
         $this->http = new Client([
-            'base_uri' => $this->base,
-            'headers' => [
-                'X-Shopify-Access-Token' => $token,
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
+            'base_uri'    => $this->base,
+            'headers'     => [
+                'X-Shopify-Access-Token' => $this->token,
+                'Accept'                 => 'application/json',
+                'Content-Type'           => 'application/json',
             ],
             'http_errors' => false,
-            'timeout' => 30,
+            'timeout'     => 60,
         ]);
     }
-    /** CREATE */
-    public function pushUnifiedToShopify(Product $p): void
+
+    /** Normalisasi string untuk matching longgar */
+    protected function norm(?string $v): string
     {
-        [$options, $variants] = $this->buildOptionsAndVariantsPayload(
-            $p,
-            false
-        );
-        if (empty($variants)) {
-            // Single-variant fallback
-            $variants = [[
-                'sku' => $p->sku,
-                'price' => (string) $p->price,
-                'inventory_policy' => 'deny',
-            ]];
+        return trim(mb_strtolower((string) $v));
+    }
+    /** Buat key gabungan opsi (o1|o2|o3) */
+    protected function optKey(?string $o1, ?string $o2, ?string $o3): string
+    {
+        return implode('|', [$this->norm($o1), $this->norm($o2), $this->norm($o3)]);
+    }
+
+    /* =========================================================
+     |  PUBLIC ENTRY POINTS
+     * =======================================================*/
+
+    /**
+     * Wrapper kompatibilitas lama:
+     * otomatis pilih create/update lalu pastikan inventory ter-push.
+     * Biar pemanggilan lama `pushUnifiedToShopify($product)` tetap jalan.
+     */
+    public function pushUnifiedToShopify(Product $p, bool $forceRefreshInventory = true): void
+    {
+        if (empty($p->shopify_product_id)) {
+            $this->createOnShopify($p);
+            return;
         }
+
+        $this->updateOnShopify($p);
+
+        if ($forceRefreshInventory) {
+            // pastikan id inventory terisi dan stok terkirim
+            $this->refreshVariantInventoryIds($p);
+            $this->reloadVariants($p);
+            $this->pushInventoryLevels($p);
+        }
+    }
+
+    public function createOnShopify(Product $p): void
+    {
+        [$options, $variants] = $this->buildOptionsAndVariantsPayload($p, false);
+        $images  = $this->buildImagesForCreate($p);
+
         $payload = [
             'product' => array_filter([
-                'title' => $p->title,
-                'body_html' => $p->description,
-                'vendor' => $p->vendor,
-                'tags' => $p->tags,
-                'options' => $options ?: null,
-                'variants' => $variants,
-                'status' => 'active',
-            ], fn($v) => $v !== null && $v !== '')
+                'title'        => $p->title,
+                'handle'       => $p->handle,
+                'body_html'    => $p->description,
+                'vendor'       => $p->vendor,
+                'product_type' => $p->product_type ?: ($p->category?->name),
+                'tags'         => $p->tags,
+                'options'      => $options ?: null,
+                'variants'     => $variants,
+                'images'       => !empty($images) ? $images : null,
+                'status'       => $p->status ?: 'draft',
+                'published_at' => $p->published_at?->toIso8601String(),
+                'metafields_global_title_tag'       => $p->seo_title,
+                'metafields_global_description_tag' => $p->seo_description,
+            ], fn($v) => $v !== null && $v !== ''),
         ];
-        $json = $this->request(
-            'POST',
-            'products.json',
-            ['json' => $payload],
-            $status
-        );
-        $data = json_decode($json, true);
-        $shopifyProduct = $data['product'] ?? null;
-        if (!$shopifyProduct) throw new \RuntimeException('Invalid Shopify
-response on create');
-        $p->shopify_product_id = $shopifyProduct['id'];
-        $p->last_synced_at = now();
-        $p->sync_status = 'synced';
-        $p->last_error = null;
-        $p->saveQuietly();
-        $this->syncLocalVariantsFromResponse($p, $shopifyProduct);
-        $this->pushInventoryLevels($p); // set stok per varian
-        $this->log('PushProductToShopify', 'create', $p, $status['code'] ??
-            null, 'ok', 'created', [
-            'resp' => Arr::only($shopifyProduct, ['id', 'title', 'status'])
-        ]);
-    }
-    /** UPDATE */
-    public function updateUnifiedToShopify(Product $p): void
-    {
-        if (!$p->shopify_product_id) {
-            throw new \RuntimeException("No shopify_product_id on product #{$p->id} — push first.");
+
+        $status = 0;
+        $json   = $this->request('POST', 'products.json', ['json' => $payload], $status);
+        $data   = json_decode($json, true) ?: [];
+        $prod   = $data['product'] ?? null;
+
+        if ($prod && isset($prod['id'])) {
+            $p->shopify_product_id = (int) $prod['id'];
+            $p->last_synced_at     = now();
+            $p->sync_status        = 'ok';
+            $p->saveQuietly();
         }
-        [$options, $variantsPayload] = $this->buildOptionsAndVariantsPayload(
-            $p,
-            true
-        );
-        $product = array_filter([
-            'id' => (int) $p->shopify_product_id,
-            'title' => $p->title,
-            'body_html' => $p->description,
-            'vendor' => $p->vendor,
-            'tags' => $p->tags,
-            'options' => $options ?: null,
-            'variants' => !empty($variantsPayload) ? $variantsPayload : null,
-        ], fn($v) => $v !== null && $v !== '');
-        if (
-            array_key_exists('variants', $product) &&
-            empty($product['variants'])
-        ) unset($product['variants']);
-        $json = $this->request(
-            'PUT',
-            "products/{$p->shopify_product_id}.json",
-            ['json' => ['product' => $product]],
-            $status
-        );
-        $data = json_decode($json, true);
-        $shopifyProduct = $data['product'] ?? null;
-        if ($shopifyProduct) $this->syncLocalVariantsFromResponse(
-            $p,
-            $shopifyProduct
-        );
-        $this->pushInventoryLevels($p); // pastikan stok terset sesuai lokal
-        $p->shopify_updated_at = now();
-        $p->last_error = null;
-        $p->sync_status = 'synced';
-        $p->last_synced_at = now();
-        $p->saveQuietly();
-        $this->log('UpdateProductOnShopify', 'update', $p, $status['code'] ??
-            null, 'ok', 'updated', [
-            'sent_variants' => !empty($variantsPayload),
-        ]);
+
+        $this->mapVariantIdsAfterCreate($p, $data);
+        $this->reloadVariants($p);
+        $this->pushInventoryLevels($p);
+
+        $this->log('PushProductToShopify', 'create', $p->id, $status, 'ok', null, $data);
     }
-    public function deleteOnShopify(int $shopifyProductId, ?Product $p = null): void
+
+    public function updateOnShopify(Product $p): void
     {
-        $this->request(
-            'DELETE',
-            "products/{$shopifyProductId}.json",
-            [],
-            $status
+        [$options, $vars] = $this->buildOptionsAndVariantsPayload($p, true);
+
+        $product = array_filter([
+            'id'           => (int) $p->shopify_product_id,
+            'title'        => $p->title,
+            'handle'       => $p->handle,
+            'body_html'    => $p->description,
+            'vendor'       => $p->vendor,
+            'product_type' => $p->product_type ?: ($p->category?->name),
+            'tags'         => $p->tags,
+            'options'      => $options ?: null,
+            'variants'     => !empty($vars) ? $vars : null,
+            'status'       => $p->status ?: 'draft',
+            'published_at' => $p->published_at?->toIso8601String(),
+            'metafields_global_title_tag'       => $p->seo_title,
+            'metafields_global_description_tag' => $p->seo_description,
+        ], fn($v) => $v !== null && $v !== '');
+
+        if (array_key_exists('variants', $product) && empty($product['variants'])) {
+            unset($product['variants']);
+        }
+
+        $status = 0;
+        $json   = $this->request('PUT', "products/{$p->shopify_product_id}.json", ['json' => ['product' => $product]], $status);
+        $data   = json_decode($json, true) ?: [];
+
+        $p->last_synced_at = now();
+        $p->sync_status    = ($status >= 200 && $status < 300) ? 'ok' : 'failed';
+        $p->saveQuietly();
+
+        // sinkron gambar & inventory_item_id terbaru
+        $this->syncImagesOnUpdate($p);
+        $this->refreshVariantInventoryIds($p);
+
+        // reload varian sebelum push inventory
+        $this->reloadVariants($p);
+        $this->pushInventoryLevels($p);
+
+        $this->log(
+            'UpdateProductOnShopify',
+            'update',
+            $p->id,
+            $status,
+            ($status >= 200 && $status < 300) ? 'ok' : 'failed',
+            null,
+            $data
         );
-        if ($p) $this->log(
+    }
+
+    public function deleteOnShopify(Product $p): void
+    {
+        // Jika belum pernah tersinkron ke Shopify, tidak perlu panggil API
+        if (empty($p->shopify_product_id)) {
+            $this->log(
+                'DeleteProductOnShopify',
+                'skip',
+                $p->id,
+                0,
+                'skipped',
+                'No shopify_product_id on product'
+            );
+            return;
+        }
+
+        $status = 0;
+        $resp   = $this->request('DELETE', "products/{$p->shopify_product_id}.json", [], $status);
+
+        $ok = ($status >= 200 && $status < 300);
+
+        // Update metadata sinkronisasi (jika Anda tidak langsung menghapus offline)
+        $p->last_synced_at = now();
+        $p->sync_status    = $ok ? 'deleted' : 'failed';
+        $p->saveQuietly();
+
+        // Body biasanya kosong pada DELETE; aman jika null
+        $body = json_decode($resp, true) ?: null;
+
+        $this->log(
             'DeleteProductOnShopify',
             'delete',
-            $p,
-            $status['code'] ?? null,
-            'ok',
-            'deleted'
+            $p->id,
+            $status,
+            $ok ? 'ok' : 'failed',
+            null,
+            is_array($body) ? $body : null
         );
     }
-    /** Build options + variants payload dari data lokal (maks 3 opsi) */
-    protected function buildOptionsAndVariantsPayload(Product $p, bool
-    $forUpdate): array
+
+
+    public function pushInventoryLevels(Product $p): void
     {
-        // options dari options_schema atau dari kolom optionX_name
-        $options = [];
-        $schema = $p->options_schema ?: [];
-        if (!empty($schema)) {
-            foreach (array_slice($schema, 0, 3) as $it) {
-                $name = trim((string)($it['name'] ?? ''));
-                if ($name === '') continue;
-                $options[] = ['name' => $name];
+        $inv = app(ShopifyInventoryService::class);
+        $loc = $inv->getDefaultLocationId();
+
+        // kalau masih ada varian tanpa inventory_item_id, coba refresh sekali lagi
+        if ($p->variants()->whereNull('shopify_inventory_item_id')->exists()) {
+            $this->refreshVariantInventoryIds($p);
+            $this->reloadVariants($p);
+        }
+
+        foreach ($p->variants as $v) {
+            if (!$v->shopify_inventory_item_id) {
+                $this->log('Inventory', 'skip', $p->id, 0, 'skipped', "No inventory_item_id for variant {$v->id}");
+                continue;
             }
-        } else {
-            foreach (
-                [$p->option1_name, $p->option2_name, $p->option3_name] as
-                $nm
-            ) {
-                if ($nm) $options[] = ['name' => $nm];
+
+            // fallback qty dari produk kalau varian kosong
+            $qty = is_numeric($v->inventory_quantity)
+                ? (int) $v->inventory_quantity
+                : (int) ($p->inventory_quantity ?? 0);
+
+            try {
+                $inv->setInventory((int) $v->shopify_inventory_item_id, $qty, $loc);
+
+                // verifikasi (sangat membantu debugging)
+                $after = $inv->getInventoryAvailable((int) $v->shopify_inventory_item_id, $loc);
+                $this->log(
+                    'Inventory',
+                    'set',
+                    $p->id,
+                    200,
+                    'ok',
+                    "variant_id={$v->id}; inv_item={$v->shopify_inventory_item_id}; loc={$loc}; qty={$qty}; verified_available=" . var_export($after, true)
+                );
+            } catch (\Throwable $e) {
+                $this->log('Inventory', 'set', $p->id, 0, 'failed', $e->getMessage());
             }
         }
-        $variantsPayload = [];
-        $variants = $p->variants()->orderBy('id')->get();
-        foreach ($variants as $v) {
+    }
+
+    /* =========================================================
+     |  BUILDERS & HELPERS
+     * =======================================================*/
+
+    protected function buildOptionsAndVariantsPayload(Product $p, bool $forUpdate): array
+    {
+        $options = [];
+        if ($p->option1_name) $options[] = ['name' => $p->option1_name, 'position' => 1];
+        if ($p->option2_name) $options[] = ['name' => $p->option2_name, 'position' => 2];
+        if ($p->option3_name) $options[] = ['name' => $p->option3_name, 'position' => 3];
+
+        $variants = [];
+        foreach ($p->variants as $v) {
             $row = array_filter([
-                'id' => $forUpdate ? ($v->shopify_variant_id ? (int) $v->shopify_variant_id : null) : null,
-                'sku' => $v->sku,
-                'price' => isset($v->price) ? (string) $v->price : null,
-                'option1' => $v->option1_value,
-                'option2' => $v->option2_value,
-                'option3' => $v->option3_value,
+                'id'                   => $forUpdate ? ($v->shopify_variant_id ? (int) $v->shopify_variant_id : null) : null,
+                'sku'                  => $v->sku,
+                'barcode'              => $v->barcode,
+                'price'                => isset($v->price) ? (string) $v->price : null,
+                'compare_at_price'     => isset($v->compare_at_price) ? (string) $v->compare_at_price : null,
+                'option1'              => $v->option1_value,
+                'option2'              => $v->option2_value,
+                'option3'              => $v->option3_value,
+                'requires_shipping'    => (bool) $v->requires_shipping,
+                'taxable'              => (bool) $v->taxable,
+                'weight'               => $v->weight ? (float) $v->weight : null,
+                'weight_unit'          => $v->weight_unit,
                 'inventory_management' => 'shopify',
             ], fn($x) => $x !== null && $x !== '');
-            if (empty($options) && !isset($row['title'])) {
-                $row['title'] = $v->title ?: 'Default';
-            }
-            $variantsPayload[] = $row;
+            $variants[] = $row;
         }
-        if ($forUpdate && empty($variantsPayload)) return [$options, []];
-        return [$options, $variantsPayload];
+
+        return [$options, $variants];
     }
-    /** Update mapping variant lokal dari respons Shopify */
-    protected function syncLocalVariantsFromResponse(Product $p, array
-    $shopifyProduct): void
+
+    protected function buildImagesForCreate(Product $p): array
     {
-        $variants = $shopifyProduct['variants'] ?? [];
-        if (!$variants) return;
-        $locals = $p->variants()->get()->all();
-        $findLocal = function (array $sv) use ($locals) {
-            foreach ($locals as $lv) {
-                $matchSku = $lv->sku && isset($sv['sku']) && (string)$lv->sku
-                    === (string)$sv['sku'];
-                $matchO1 = (string)($lv->option1_value ?? '') === (string)
-                ($sv['option1'] ?? '');
-                $matchO2 = (string)($lv->option2_value ?? '') === (string)
-                ($sv['option2'] ?? '');
-                $matchO3 = (string)($lv->option3_value ?? '') === (string)
-                ($sv['option3'] ?? '');
-                if ($matchSku || ($matchO1 && $matchO2 && $matchO3)) return $lv;
+        $out = [];
+        foreach ($p->images as $img) {
+            $entry = [
+                'position' => $img->position,
+                'alt'      => $img->alt,
+            ];
+            $path = storage_path('app/public/' . ltrim($img->file_path, '/'));
+            if (is_file($path)) {
+                $entry['attachment'] = base64_encode(file_get_contents($path));
             }
-            return null;
-        };
-        foreach ($variants as $sv) {
-            $lv = $findLocal($sv);
-            if ($lv) {
-                $lv->shopify_variant_id = $sv['id'] ?? $lv->shopify_variant_id;
-                $lv->shopify_inventory_item_id = $sv['inventory_item_id'] ??
-                    $lv->shopify_inventory_item_id;
-                if (isset($sv['price'])) $lv->price = is_numeric($sv['price']) ? (float)$sv['price'] : null;
-                if (isset($sv['inventory_quantity'])) $lv->inventory_quantity =
-                    (int)$sv['inventory_quantity'];
-                $lv->saveQuietly();
+            $out[] = array_filter($entry, fn($v) => $v !== null && $v !== '');
+        }
+        return $out;
+    }
+
+    protected function syncImagesOnUpdate(Product $p): void
+    {
+        if (!$p->shopify_product_id) return;
+
+        $json   = $this->request('GET', "products/{$p->shopify_product_id}/images.json");
+        $remote = json_decode($json, true)['images'] ?? [];
+
+        $remoteById = [];
+        foreach ($remote as $ri) {
+            $remoteById[(string) $ri['id']] = $ri;
+        }
+
+        foreach ($p->images as $img) {
+            $payload = [
+                'image' => array_filter([
+                    'id'         => $img->shopify_image_id ? (int) $img->shopify_image_id : null,
+                    'product_id' => (int) $p->shopify_product_id,
+                    'position'   => $img->position,
+                    'alt'        => $img->alt,
+                ], fn($v) => $v !== null && $v !== ''),
+            ];
+
+            $path = storage_path('app/public/' . ltrim($img->file_path, '/'));
+            if (!$img->shopify_image_id && is_file($path)) {
+                $payload['image']['attachment'] = base64_encode(file_get_contents($path));
+            }
+
+            if ($img->shopify_image_id && isset($remoteById[(string) $img->shopify_image_id])) {
+                $this->request('PUT', "products/{$p->shopify_product_id}/images/{$img->shopify_image_id}.json", ['json' => $payload]);
             } else {
-                $p->variants()->create([
-                    'title' => $sv['title'] ?? null,
-                    'option1_value' => $sv['option1'] ?? null,
-                    'option2_value' => $sv['option2'] ?? null,
-                    'option3_value' => $sv['option3'] ?? null,
-                    'sku' => $sv['sku'] ?? null,
-                    'price' => isset($sv['price']) ?
-                        (string)$sv['price'] : null,
-                    'inventory_quantity' => $sv['inventory_quantity'] ??
-                        0,
-                    'shopify_variant_id' => $sv['id'] ?? null,
-                    'shopify_inventory_item_id' => $sv['inventory_item_id'] ??
-                        null,
-                ]);
-            }
-        }
-    }
-    /** Sinkron stok per variant ke Shopify Inventory API */
-    protected function pushInventoryLevels(Product $p): void
-    {
-        try {
-            $inv = app(\App\Services\ShopifyInventoryService::class);
-            $loc = $inv->getDefaultLocationId(); // <-- gunakan lokasi default (Setting/ENV/primary)
-            foreach ($p->variants as $v) {
-                if ($v->shopify_inventory_item_id) {
-                    $inv->setInventory((int)$v->shopify_inventory_item_id, (int)$v->inventory_quantity, $loc);
+                $resp = $this->request('POST', "products/{$p->shopify_product_id}/images.json", ['json' => $payload]);
+                $data = json_decode($resp, true);
+                if (!empty($data['image']['id'])) {
+                    $img->shopify_image_id = (int) $data['image']['id'];
+                    $img->saveQuietly();
                 }
             }
-        } catch (\Throwable $e) {
-            Log::warning('[Inventory Sync] ' . $e->getMessage());
         }
     }
-    /** HTTP wrapper */
-    protected function request(string $method, string $uri, array $options =
-    [], ?array &$statusOut = null): string
+
+    protected function request(string $method, string $uri, array $options = [], &$status = 0): string
     {
-        try {
-            $resp = $this->http->request($method, $uri, $options);
-            $code = $resp->getStatusCode();
-            $body = (string) $resp->getBody();
-            if (is_array($statusOut)) $statusOut['code'] = $code;
-            if ($code >= 200 && $code < 300) return $body;
-            $msg = $this->shorten("HTTP {$code} {$uri} :: " . $body);
-            throw new ShopifyHttpException($code, $msg, $body);
-        } catch (RequestException $e) {
-            throw new ShopifyHttpException(0, 'HTTP error: ' . $e->getMessage());
-        }
+        $resp   = $this->http->request($method, $uri, $options);
+        $status = $resp->getStatusCode();
+        $body   = (string) $resp->getBody();
+        return $body;
     }
-    protected function shorten(string $s, int $len = 400): string
+
+    protected function log(string $job, string $action, int $productId, int $http, string $status, string $msg = null, array $body = null): void
     {
-        $s = trim($s);
-        return mb_strlen($s) > $len ? (mb_substr($s, 0, $len) . '…') : $s;
+        SyncLog::create([
+            'job'         => $job,
+            'action'      => $action,
+            'product_id'  => $productId,
+            'http_status' => $http,
+            'status'      => $status,
+            'message'     => $msg,
+            'body'        => $body,
+        ]);
     }
-    protected function log(
-        string $job,
-        string $action,
-        Product $p,
-        ?int $http,
-        string $status,
-        string $msg,
-        array $ctx = []
-    ): void {
-        try {
-            SyncLog::create([
-                'job' => $job,
-                'action' => $action,
-                'product_id' => $p->id,
-                'shopify_product_id' => $p->shopify_product_id,
-                'http_status' => $http,
-                'status' => $status,
-                'message' => $msg,
-                'context' => $ctx ?: null,
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('[SyncLog] failed: ' . $e->getMessage());
+
+    protected function mapVariantIdsAfterCreate(Product $p, array $resp): void
+    {
+        $remoteVariants = $resp['product']['variants'] ?? [];
+        if (empty($remoteVariants)) return;
+
+        $locals = $p->variants()->get();
+        $bySku = $byOpts = $byTitle = [];
+
+        foreach ($locals as $lv) {
+            if ($lv->sku) $bySku[$this->norm($lv->sku)] = $lv;
+            $byOpts[$this->optKey($lv->option1_value, $lv->option2_value, $lv->option3_value)] = $lv;
+            if ($lv->title) $byTitle[$this->norm($lv->title)] = $lv;
         }
+
+        foreach ($remoteVariants as $idx => $rv) {
+            $sku = $this->norm($rv['sku'] ?? '');
+            $key = $this->optKey($rv['option1'] ?? null, $rv['option2'] ?? null, $rv['option3'] ?? null);
+            $rTitle = $this->norm($rv['title'] ?? '');
+
+            $match = null;
+            if ($sku !== '' && isset($bySku[$sku]))        $match = $bySku[$sku];
+            elseif (isset($byOpts[$key]))                  $match = $byOpts[$key];
+            elseif ($rTitle !== '' && isset($byTitle[$rTitle])) $match = $byTitle[$rTitle];
+            else                                           $match = $locals[$idx] ?? null;
+
+            if ($match) {
+                $svId = (int)($rv['id'] ?? 0);
+                $iiId = isset($rv['inventory_item_id']) ? (int)$rv['inventory_item_id'] : null;
+                $changed = false;
+                if ($svId && $match->shopify_variant_id !== $svId) {
+                    $match->shopify_variant_id = $svId;
+                    $changed = true;
+                }
+                if ($iiId && $match->shopify_inventory_item_id !== $iiId) {
+                    $match->shopify_inventory_item_id = $iiId;
+                    $changed = true;
+                }
+                if ($changed) $match->saveQuietly();
+            }
+        }
+    }
+
+    public function refreshVariantInventoryIds(Product $p): void
+    {
+        if (!$p->shopify_product_id) return;
+
+        $json   = $this->request('GET', "products/{$p->shopify_product_id}.json");
+        $remote = json_decode($json, true)['product']['variants'] ?? [];
+        if (empty($remote)) return;
+
+        $locals = $p->variants()->get();
+        $bySku = $byOpts = $byTitle = [];
+
+        foreach ($locals as $lv) {
+            if ($lv->sku) $bySku[$this->norm($lv->sku)] = $lv;
+            $byOpts[$this->optKey($lv->option1_value, $lv->option2_value, $lv->option3_value)] = $lv;
+            if ($lv->title) $byTitle[$this->norm($lv->title)] = $lv;
+        }
+
+        foreach ($remote as $idx => $rv) {
+            $sku = $this->norm($rv['sku'] ?? '');
+            $key = $this->optKey($rv['option1'] ?? null, $rv['option2'] ?? null, $rv['option3'] ?? null);
+            $rTitle = $this->norm($rv['title'] ?? '');
+
+            $match = null;
+            if ($sku !== '' && isset($bySku[$sku]))        $match = $bySku[$sku];
+            elseif (isset($byOpts[$key]))                  $match = $byOpts[$key];
+            elseif ($rTitle !== '' && isset($byTitle[$rTitle])) $match = $byTitle[$rTitle];
+            else                                           $match = $locals[$idx] ?? null;
+
+            if ($match) {
+                $svId = (int)($rv['id'] ?? 0);
+                $iiId = isset($rv['inventory_item_id']) ? (int)$rv['inventory_item_id'] : null;
+                $changed = false;
+                if ($svId && !$match->shopify_variant_id) {
+                    $match->shopify_variant_id = $svId;
+                    $changed = true;
+                }
+                if ($iiId && !$match->shopify_inventory_item_id) {
+                    $match->shopify_inventory_item_id = $iiId;
+                    $changed = true;
+                }
+                if ($changed) $match->saveQuietly();
+            }
+        }
+    }
+
+    protected function reloadVariants(Product $p): void
+    {
+        $p->unsetRelation('variants');
+        $p->load('variants');
     }
 }

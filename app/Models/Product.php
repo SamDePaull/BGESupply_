@@ -6,99 +6,52 @@ use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
-    protected $fillable = [
-        'title',
-        'description',
-        'sku',
-        'price',
-        'inventory_quantity',
-        'tags',
-        'vendor',
-        'options_schema',
-        'option1_name',
-        'option2_name',
-        'option3_name',
-        'shopify_product_id',
-        'sync_status',
-        'last_synced_at',
-        'last_error',
-        'shopify_updated_at',
-    ];
-
-    protected $casts = [
-        'options_schema' => 'array',
-        'last_synced_at' => 'datetime',
-        'shopify_updated_at' => 'datetime',
-        'price' => 'decimal:2',
-    ];
-
-    // Default nilai agar kalau field tidak dikirim, tetap 0
-    protected $attributes = [
-        'inventory_quantity' => 0,
-    ];
-
-
-    // Contoh relasi ke item penjualan (POS)
-    public function saleItems()
+    protected $fillable = ['title', 'handle', 'description', 'sku', 'price', 'compare_at_price', 'cost_price', 'inventory_quantity', 'vendor', 'product_type', 'category_id', 'tags', 'options_schema', 'option1_name', 'option2_name', 'option3_name', 'requires_shipping', 'taxable', 'weight', 'weight_unit', 'status', 'published_at', 'seo_title', 'seo_description', 'shopify_product_id', 'sync_status', 'last_synced_at', 'last_error', 'shopify_updated_at'];
+    protected $casts = ['options_schema' => 'array', 'last_synced_at' => 'datetime', 'shopify_updated_at' => 'datetime', 'published_at' => 'datetime', 'requires_shipping' => 'boolean', 'taxable' => 'boolean', 'price' => 'decimal:2', 'compare_at_price' => 'decimal:2', 'cost_price' => 'decimal:2'];
+    protected $attributes = ['inventory_quantity' => 0, 'status' => 'draft', 'requires_shipping' => true, 'taxable' => true];
+    protected static function booted(): void
     {
-        return $this->hasMany(SaleItem::class);
+        static::saving(function (Product $p) {
+            if ($p->inventory_quantity === null || $p->inventory_quantity === '') {
+                $p->inventory_quantity = 0;
+            }
+        });
+        static::saved(function (Product $p) {
+            $p->applyVariantPriceFallback();
+        });
     }
-
-    // Helper: asal data ringkas
-    public function getOriginLabelAttribute(): string
+    public function applyVariantPriceFallback(): void
     {
-        return $this->origin === 'shopify' ? 'Shopify' : 'Offline';
-    }
-
-    public function shopifyProduct()
-    {
-        return $this->belongsTo(\App\Models\ShopifyProduct::class, 'shopify_product_id', 'id');
-    }
-
-    // Agar bisa dipakai RelationManager langsung
-    public function shopifyVariants()
-    {
-        return $this->hasMany(\App\Models\ShopifyVariant::class, 'shopify_product_id', 'shopify_product_id');
-    }
-
-    public function shopifyImages()
-    {
-        return $this->hasMany(\App\Models\ShopifyImage::class, 'shopify_product_id', 'shopify_product_id');
-    }
-
-    public function getIsLowStockAttribute(): bool
-    {
-        return (int) $this->stock <= (int) config('inventory.low_stock_threshold', 5);
-    }
-    public function markDirty(string $reason = null): void
-    {
-        $this->sync_status = 'dirty';
-        if ($reason) {
-            $this->last_error = $reason; // keep latest reason for visibility
+        $baseP = $this->price;
+        $baseC = $this->compare_at_price;
+        $vars = $this->relationLoaded('variants') ? $this->variants : $this->variants()->get();
+        foreach ($vars as $v) {
+            $dirty = false;
+            if ((is_null($v->price) || $v->price === '') && !is_null($baseP)) {
+                $v->price = $baseP;
+                $dirty = true;
+            }
+            if ((is_null($v->compare_at_price) || $v->compare_at_price === '') && !is_null($baseC)) {
+                $v->compare_at_price = $baseC;
+                $dirty = true;
+            }
+            if ($v->inventory_quantity === null || $v->inventory_quantity === '') {
+                $v->inventory_quantity = 0;
+                $dirty = true;
+            }
+            if ($dirty) $v->saveQuietly();
         }
-        $this->saveQuietly();
     }
-
-
-    /** Scope: dirty rows only. */
-    public function scopeDirty($q)
-    {
-        return $q->where('sync_status', 'dirty');
-    }
-
-    public function syncLogs()
-    {
-        return $this->hasMany(\App\Models\SyncLog::class);
-    }
-
     public function variants()
     {
         return $this->hasMany(ProductVariant::class);
     }
-
-    public function setInventoryQuantityAttribute($value): void
+    public function category()
     {
-        $this->attributes['inventory_quantity'] =
-            ($value === null || $value === '') ? 0 : (int) $value;
+        return $this->belongsTo(Category::class);
+    }
+    public function images()
+    {
+        return $this->hasMany(ProductImage::class)->orderByRaw('COALESCE(position,9999) asc')->orderBy('id');
     }
 }

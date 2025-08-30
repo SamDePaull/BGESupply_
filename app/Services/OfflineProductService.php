@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Models\Product;
-use App\Models\OfflineProduct;
+use App\Models\OfflineProductStaging;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -48,7 +48,7 @@ class OfflineProductService
 
         return DB::transaction(function () use ($data) {
             // 1) Simpan ke tabel sumber offline
-            $offline = OfflineProduct::create([
+            $offline = OfflineProductStaging::create([
                 'name'       => $data['name'],
                 'sku'        => $data['sku'],
                 'price'      => (float) $data['price'],
@@ -102,7 +102,7 @@ class OfflineProductService
      */
     public function syncExistingOfflineToShopify(int $offlineId): bool
     {
-        $offline = OfflineProduct::find($offlineId);
+        $offline = OfflineProductStaging::find($offlineId);
         if (!$offline) {
             Log::warning('Offline product not found', ['offline_id' => $offlineId]);
             return false;

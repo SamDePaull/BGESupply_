@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Jobs\PushProductToShopify;
 use App\Jobs\UpdateProductOnShopify;
 use App\Jobs\DeleteProductOnShopify;
+use App\Models\OfflineProductStaging;
 use App\Models\Product;
 
 class ProductObserver
@@ -19,11 +20,33 @@ class ProductObserver
         'tags',
         'vendor'
     ];
-    public function created(Product $product): void
+    public function created(Product $p): void
     {
-        if (empty($product->shopify_product_id)) {
-            dispatch(new PushProductToShopify($product->id))->onQueue('shopify');
+        if (empty($p->shopify_product_id)) {
+            dispatch(new PushProductToShopify($p->id))->onQueue('shopify');
         }
+        OfflineProductStaging::updateOrCreate(
+            ['handle' => $p->handle],
+            [
+                'title'              => $p->title,
+                'sku'                => $p->sku,
+                'barcode'            => $p->barcode,
+                'price'              => $p->price,
+                'compare_at_price'   => $p->compare_at_price,
+                'inventory_quantity' => $p->inventory_quantity,
+                'vendor'             => $p->vendor,
+                'product_type'       => $p->product_type,
+                'options'            => array_values(array_filter([
+                    $p->option1_name ? ['name' => $p->option1_name, 'values' => []] : null,
+                    $p->option2_name ? ['name' => $p->option2_name, 'values' => []] : null,
+                    $p->option3_name ? ['name' => $p->option3_name, 'values' => []] : null,
+                ])),
+                'variants'           => [],
+                'images'             => [],
+                'status'             => 'created_from_admin',
+                'notes'              => null,
+            ]
+        );
     }
     public function updated(Product $product): void
     {
