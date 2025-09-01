@@ -34,8 +34,11 @@ class AdminPanelProvider extends PanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->navigationGroups([
                 NavigationGroup::make()->label('Dashboard'),
-                NavigationGroup::make()->label('Catalog'),
-                NavigationGroup::make()->label('Settings'),
+                NavigationGroup::make()->label('Katalog'),
+                NavigationGroup::make()->label('Transaksi'),
+                NavigationGroup::make()->label('Laporan'),
+                NavigationGroup::make()->label('Integrasi'),
+                NavigationGroup::make()->label('Pengaturan'),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -54,5 +57,5 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ]);
-            }
+    }
 }

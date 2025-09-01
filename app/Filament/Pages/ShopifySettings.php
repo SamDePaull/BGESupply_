@@ -10,9 +10,9 @@ use Filament\Pages\Page;
 class ShopifySettings extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
-    protected static ?string $navigationGroup = 'Shopify';
     protected static string $view = 'filament.pages.shopify-settings';
-    protected static ?string $title = 'Shopify Settings';
+    protected static ?string $navigationGroup = 'Integrasi';
+    protected static ?int $navigationSort = 10;
 
     public ?int $location_id = null;
 

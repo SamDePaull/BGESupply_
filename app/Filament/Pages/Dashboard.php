@@ -6,25 +6,46 @@ use Filament\Pages\Dashboard as BaseDashboard;
 
 class Dashboard extends BaseDashboard
 {
-    public static function getNavigationGroup(): ?string
+    protected static ?string $navigationIcon = 'heroicon-o-home';
+    protected static ?string $navigationLabel = 'Dashboard';
+
+    /** Widget di baris header (stat cards + welcome) */
+    public function getHeaderWidgets(): array
     {
-        return 'Dashboard';
+        return [
+            \App\Filament\Widgets\DashboardStatsOverview::class,
+        ];
     }
+
+    /** Kolom untuk header widgets (3 kartu + 1 welcome) */
+    public function getHeaderWidgetsColumns(): int|string|array
+    {
+        return [
+            'sm' => 1,
+            'lg' => 4,
+        ];
+    }
+
+    /** Widget isi dashboard (chart + latest orders) */
     public function getWidgets(): array
     {
         return [
-            // Widget lama kamu (bila ingin dipertahankan) \App\Filament\Widgets\SalesOverview::class, // boleh hapus baris ini kalau pakai OpsOverview saja
-            // Widget baru operasional
-            \App\Filament\Widgets\OpsOverview::class,
-            // Widget existing di project-mu
+            // \App\Filament\Widgets\OpsOverview::class,
             // \App\Filament\Widgets\StockByOrigin::class,
+            // \App\Filament\Widgets\RecentSyncLogs::class,
+            \App\Filament\Widgets\OrdersPerMonthChart::class,
             \App\Filament\Widgets\TopProducts::class,
-            // Logs sinkronisasi
-            \App\Filament\Widgets\RecentSyncLogs::class,
+            \App\Filament\Widgets\CustomersTotalChart::class,
+            \App\Filament\Widgets\LatestOrders::class,
         ];
     }
+
+    /** Grid body: 2 kolom untuk charts, table di bawah penuh */
     public function getColumns(): int|string|array
     {
-        return 12; // grid 12 kolom
+        return [
+            'sm' => 1,
+            'lg' => 2,
+        ];
     }
 }

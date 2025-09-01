@@ -19,9 +19,10 @@ use Filament\Forms\Set;
 class Cashier extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-credit-card';
-    protected static ?string $navigationGroup = 'POS';
     protected static string $view = 'filament.pages.cashier';
-    protected static ?string $title = 'Kasir';
+    protected static ?string $navigationGroup = 'Transaksi';
+    protected static ?int $navigationSort = 10;
+    protected static bool $shouldRegisterNavigation = false;
 
     public ?array $items = []; // [{product_id, variant_id, qty, price, sub}]
     public ?string $customer_name = null;
@@ -38,7 +39,7 @@ class Cashier extends Page
                         ->label('Produk')
                         ->searchable()
                         ->preload()
-                        ->options(fn () => Product::orderBy('title')->pluck('title','id'))
+                        ->options(fn() => Product::orderBy('title')->pluck('title', 'id'))
                         ->reactive()
                         ->afterStateUpdated(function ($state, Set $set) {
                             // default price dari produk jika belum pilih varian
@@ -53,7 +54,7 @@ class Cashier extends Page
                         ->options(function (Get $get) {
                             $pid = $get('product_id');
                             if (!$pid) return [];
-                            return ProductVariant::where('product_id',$pid)->orderBy('id')
+                            return ProductVariant::where('product_id', $pid)->orderBy('id')
                                 ->get()
                                 ->mapWithKeys(fn($v) => [$v->id => trim($v->title ?? ($v->option1_value . ' ' . $v->option2_value . ' ' . $v->option3_value) ?? 'Default')])
                                 ->toArray();
@@ -65,19 +66,19 @@ class Cashier extends Page
                                 $set('price', $v?->price ?? $get('price'));
                             }
                         }),
-                    Forms\Components\TextInput::make('qty')->numeric()->default(1)->reactive()
+                    Forms\Components\TextInput::make('qty')->numeric()->minValue(1)->default(1)->required()->reactive()
                         ->afterStateUpdated(fn(Get $get, Set $set) => $set('subtotal', (int)$get('qty') * (float)($get('price') ?? 0))),
-                    Forms\Components\TextInput::make('price')->numeric()->reactive()
+                    Forms\Components\TextInput::make('price')->numeric()->minValue(0)->prefix('Rp')->reactive()
                         ->afterStateUpdated(fn(Get $get, Set $set) => $set('subtotal', (int)$get('qty') * (float)($get('price') ?? 0))),
-                    Forms\Components\Placeholder::make('subtotal')->content(fn(Get $get) => 'Rp '.number_format((int)$get('qty') * (float)($get('price') ?? 0),0,',','.')),
+                    Forms\Components\Placeholder::make('subtotal')->content(fn(Get $get) => 'Rp ' . number_format((int)$get('qty') * (float)($get('price') ?? 0), 0, ',', '.')),
                 ])
                 ->columns(5)
                 ->createItemButtonLabel('Tambah Item')
                 ->default([])
                 ->reactive(),
             Forms\Components\TextInput::make('customer_name')->label('Nama Pelanggan'),
-            Forms\Components\TextInput::make('customer_phone')->label('No. WhatsApp (E.164, mis. 62812...)'),
-            Forms\Components\Radio::make('payment_method')->options(['cash'=>'Tunai','midtrans'=>'Midtrans'])->inline()->default('cash'),
+            Forms\Components\TextInput::make('customer_phone')->label('No. WhatsApp')->tel()->helperText('Format E.164, contoh 62812xxxxxxx')->rule('regex:/^62\d{8,15}$/'),
+            Forms\Components\Radio::make('payment_method')->options(['cash' => 'Tunai', 'midtrans' => 'Midtrans'])->inline()->default('cash'),
         ];
     }
 
@@ -138,7 +139,7 @@ class Cashier extends Page
                     'first_name' => $sale->customer_name ?: 'Customer',
                     'phone' => $sale->customer_phone,
                 ],
-                'item_details' => array_map(function($it){
+                'item_details' => array_map(function ($it) {
                     return [
                         'id' => $it['product_id'],
                         'price' => (int)$it['price'],

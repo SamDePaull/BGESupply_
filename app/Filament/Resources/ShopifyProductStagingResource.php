@@ -14,9 +14,10 @@ use Filament\Tables\Table;
 class ShopifyProductStagingResource extends Resource
 {
     protected static ?string $model = ShopifyProductStaging::class;
-    protected static ?string $navigationGroup = 'Catalog (Staging)';
+
     protected static ?string $navigationIcon = 'heroicon-o-cloud-arrow-down';
-    protected static ?string $navigationLabel = 'Shopify Staging';
+    protected static bool $shouldRegisterNavigation = false; // sembunyikan dari sidebar
+
 
     public static function form(Form $form): Form
     {

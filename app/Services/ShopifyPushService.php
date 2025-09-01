@@ -303,46 +303,6 @@ class ShopifyPushService
         return $out;
     }
 
-    protected function syncImagesOnUpdate(Product $p): void
-    {
-        if (!$p->shopify_product_id) return;
-
-        $json   = $this->request('GET', "products/{$p->shopify_product_id}/images.json");
-        $remote = json_decode($json, true)['images'] ?? [];
-
-        $remoteById = [];
-        foreach ($remote as $ri) {
-            $remoteById[(string) $ri['id']] = $ri;
-        }
-
-        foreach ($p->images as $img) {
-            $payload = [
-                'image' => array_filter([
-                    'id'         => $img->shopify_image_id ? (int) $img->shopify_image_id : null,
-                    'product_id' => (int) $p->shopify_product_id,
-                    'position'   => $img->position,
-                    'alt'        => $img->alt,
-                ], fn($v) => $v !== null && $v !== ''),
-            ];
-
-            $path = storage_path('app/public/' . ltrim($img->file_path, '/'));
-            if (!$img->shopify_image_id && is_file($path)) {
-                $payload['image']['attachment'] = base64_encode(file_get_contents($path));
-            }
-
-            if ($img->shopify_image_id && isset($remoteById[(string) $img->shopify_image_id])) {
-                $this->request('PUT', "products/{$p->shopify_product_id}/images/{$img->shopify_image_id}.json", ['json' => $payload]);
-            } else {
-                $resp = $this->request('POST', "products/{$p->shopify_product_id}/images.json", ['json' => $payload]);
-                $data = json_decode($resp, true);
-                if (!empty($data['image']['id'])) {
-                    $img->shopify_image_id = (int) $data['image']['id'];
-                    $img->saveQuietly();
-                }
-            }
-        }
-    }
-
     protected function request(string $method, string $uri, array $options = [], &$status = 0): string
     {
         $resp   = $this->http->request($method, $uri, $options);
@@ -455,5 +415,53 @@ class ShopifyPushService
     {
         $p->unsetRelation('variants');
         $p->load('variants');
+    }
+
+    protected function syncImagesOnUpdate(Product $p): void
+    {
+        if (!$p->shopify_product_id) return;
+
+        $json   = $this->request('GET', "products/{$p->shopify_product_id}/images.json");
+        $remote = json_decode($json, true)['images'] ?? [];
+
+        $remoteById = [];
+        foreach ($remote as $ri) {
+            $remoteById[(string) $ri['id']] = $ri;
+        }
+
+        foreach ($p->images as $img) {
+            $payload = [
+                'image' => array_filter([
+                    'id'         => $img->shopify_image_id ? (int) $img->shopify_image_id : null,
+                    'product_id' => (int) $p->shopify_product_id,
+                    'position'   => $img->position,
+                    'alt'        => $img->alt,
+                ], fn($v) => $v !== null && $v !== ''),
+            ];
+
+            $path = storage_path('app/public/' . ltrim($img->file_path, '/'));
+            if (!$img->shopify_image_id && is_file($path)) {
+                $payload['image']['attachment'] = base64_encode(file_get_contents($path));
+            }
+
+            if ($img->shopify_image_id && isset($remoteById[(string) $img->shopify_image_id])) {
+                $resp = $this->request('PUT', "products/{$p->shopify_product_id}/images/{$img->shopify_image_id}.json", ['json' => $payload]);
+                $data = json_decode($resp, true);
+                if (!empty($data['image']['src'])) {
+                    $img->file_path = $data['image']['src']; // ← simpan URL Shopify
+                    $img->saveQuietly();
+                }
+            } else {
+                $resp = $this->request('POST', "products/{$p->shopify_product_id}/images.json", ['json' => $payload]);
+                $data = json_decode($resp, true);
+                if (!empty($data['image']['id'])) {
+                    $img->shopify_image_id = (int) $data['image']['id'];
+                    if (!empty($data['image']['src'])) {
+                        $img->file_path = $data['image']['src']; // ← simpan URL Shopify
+                    }
+                    $img->saveQuietly();
+                }
+            }
+        }
     }
 }

@@ -17,9 +17,8 @@ use Filament\Tables\Table;
 class OfflineProductStagingResource extends Resource
 {
     protected static ?string $model = OfflineProductStaging::class;
-    protected static ?string $navigationGroup = 'Catalog (Staging)';
     protected static ?string $navigationIcon = 'heroicon-o-archive-box';
-    protected static ?string $navigationLabel = 'Offline Staging';
+    protected static bool $shouldRegisterNavigation = false; // sembunyikan dari sidebar
 
     public static function form(Form $form): Form
     {
@@ -64,7 +63,7 @@ public static function table(Table $table): Table
                 ->icon('heroicon-o-arrow-down-tray')
                 ->requiresConfirmation()
                 ->action(function ($record) {
-                    app(\App\Services\ProductMergeService::class)->mergeOffline($record);
+                    app(ProductMergeService::class)->mergeOffline($record);
                     \Filament\Notifications\Notification::make()
                         ->title('Merged')
                         ->body('Data staging offline berhasil di-merge ke Product.')
@@ -80,7 +79,7 @@ public static function table(Table $table): Table
                     ->label('Bulk: Merge ke Product')
                     ->requiresConfirmation()
                     ->action(function ($records) {
-                        $svc = app(\App\Services\ProductMergeService::class);
+                        $svc = app(ProductMergeService::class);
                         foreach ($records as $rec) {
                             $svc->mergeOffline($rec);
                         }

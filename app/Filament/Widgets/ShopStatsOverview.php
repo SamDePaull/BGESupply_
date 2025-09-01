@@ -19,8 +19,8 @@ class ShopStatsOverview extends BaseWidget
         $failed = SyncLog::where('status', 'failed')->count();
         $location = 'N/A';
         try {
-            $locId = app(ShopifyInventoryService::class)->getDefaultLocationId();
-            $location = (string) $locId;
+            $val = \App\Models\Setting::get('shopify.location_id');
+            +$location = is_array($val) ? ($val['name'] ?? 'N/A') : (string)$val;
         } catch (\Throwable $e) {
         }
         return [
