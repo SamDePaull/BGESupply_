@@ -9,6 +9,7 @@ use App\Jobs\PushProductToShopify;
 use App\Http\Controllers\ShopifyWebhookController;
 use App\Http\Controllers\ExportController;
 use App\Http\Controllers\ReceiptController;
+use App\Http\Controllers\ReportController;
 use App\Models\Sale;
 
 Route::get('/', function () {
@@ -58,4 +59,6 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::get('/receipts/{sale}', [ReceiptController::class, 'show'])
         ->whereNumber('sale')
         ->name('receipt.show');
+
+    Route::get('/reports/all.pdf', [ReportController::class, 'all'])->name('reports.all.pdf');
 });
