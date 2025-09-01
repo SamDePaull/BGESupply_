@@ -3,58 +3,47 @@
 namespace App\Filament\Resources\SaleResource\Pages;
 
 use App\Filament\Resources\SaleResource;
-use App\Models\Sale;
-use Filament\Resources\Components\Tab;
+use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
-use Filament\Resources\Pages\ListRecords\Concerns\HasTabs;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\SaleResource\Widgets\SaleStatusTabs;
+use App\Filament\Resources\SaleResource\Widgets\SalesStatsOverview;
 
 class ListSales extends ListRecords
 {
     protected static string $resource = SaleResource::class;
 
+    /** Tombol header – sisakan Create saja, tabs dipindah ke widget */
     protected function getHeaderActions(): array
     {
-        // ganti label tombol create → "New order"
         return [
-            \Filament\Actions\CreateAction::make()->label('New order'),
+            Actions\CreateAction::make()->label('New order'),
         ];
     }
 
-    protected function getHeaderWidgets(): array
+    /** Filter query tabel berdasar ?status=... (pengganti HasTabs Pro) */
+    protected function getTableQuery(): Builder
     {
-        // 3 kartu di header
+        $query  = parent::getTableQuery();
+        $status = request()->query('status');
+
+        if (in_array($status, ['paid', 'unpaid', 'refunded', 'void'], true)) {
+            $query->where('status', $status);
+        }
+        return $query;
+    }
+
+    public function getHeaderWidgets(): array
+    {
         return [
-            \App\Filament\Resources\SaleResource\Widgets\SalesStatsOverview::class,
+            SalesStatsOverview::class, // 3 kolom
+            SaleStatusTabs::class,     // tabs (full)
         ];
     }
 
     public function getHeaderWidgetsColumns(): int|string|array
     {
-        return 3; // 3 kartu per baris (seperti mockup)
-    }
-
-    public function getTabs(): array
-    {
-        return [
-            'all' => Tab::make('All')
-                ->badge(Sale::query()->count()),
-
-            'paid' => Tab::make('Paid')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', 'paid'))
-                ->badge(Sale::query()->where('status', 'paid')->count()),
-
-            'unpaid' => Tab::make('Unpaid')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', 'unpaid'))
-                ->badge(Sale::query()->where('status', 'unpaid')->count()),
-
-            'refunded' => Tab::make('Refunded')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', 'refunded'))
-                ->badge(Sale::query()->where('status', 'refunded')->count()),
-
-            'void' => Tab::make('Void')
-                ->modifyQueryUsing(fn (Builder $q) => $q->where('status', 'void'))
-                ->badge(Sale::query()->where('status', 'void')->count()),
-        ];
+        // Tabs akan span 'full', baris berikutnya 3 kolom untuk stats
+        return 1;
     }
 }

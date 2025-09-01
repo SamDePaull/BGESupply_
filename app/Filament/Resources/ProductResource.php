@@ -435,8 +435,8 @@ class ProductResource extends Resource
                     ->size(ActionSize::Small)
                     ->tooltip(fn ($record) => $record->sync_enabled ? 'Putus Sinkronisasi' : 'Aktifkan Sinkronisasi')
                     ->requiresConfirmation()
-                    ->modalHeading(fn ($r) => $r->sync_enabled ? 'Putus sinkronisasi produk ini?' : 'Aktifkan sinkronisasi produk ini?')
-                    ->modalDescription(fn ($r) => $r->sync_enabled
+                    ->modalHeading(fn ($record) => $record->sync_enabled ? 'Putus sinkronisasi produk ini?' : 'Aktifkan sinkronisasi produk ini?')
+                    ->modalDescription(fn ($record) => $record->sync_enabled
                         ? 'Produk ini tidak akan lagi diperbarui otomatis ke Shopify sampai Anda mengaktifkannya kembali.'
                         : 'Produk ini akan kembali mengikuti pembaruan otomatis ke Shopify.')
                     ->modalSubmitActionLabel('Lanjutkan')

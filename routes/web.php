@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Jobs\PushProductToShopify;
 use App\Http\Controllers\ShopifyWebhookController;
 use App\Http\Controllers\ExportController;
+use App\Http\Controllers\ReceiptController;
 use App\Models\Sale;
 
 Route::get('/', function () {
@@ -46,4 +47,15 @@ Route::post('/midtrans/callback', function (\Illuminate\Http\Request $r) {
         }
     }
     return response()->json(['ok' => true]);
+});
+
+Route::middleware(['web', 'auth'])->group(function () {
+    // LETAKKAN YANG PDF DULU ↓↓↓
+    Route::get('/receipts/{sale}.pdf', [ReceiptController::class, 'pdf'])
+        ->whereNumber('sale')
+        ->name('receipt.pdf');
+
+    Route::get('/receipts/{sale}', [ReceiptController::class, 'show'])
+        ->whereNumber('sale')
+        ->name('receipt.show');
 });

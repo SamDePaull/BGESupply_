@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Resources\SaleResource;
 use App\Models\Sale;
 use Filament\Tables;
 use Filament\Widgets\TableWidget as BaseWidget;
@@ -10,8 +11,6 @@ use Illuminate\Database\Eloquent\Builder;
 class LatestOrders extends BaseWidget
 {
     protected static ?string $heading = 'Latest Orders';
-
-    /** table 1 kolom penuh (di bawah charts) */
     protected int|string|array $columnSpan = 'full';
 
     protected function getTableQuery(): Builder
@@ -44,12 +43,8 @@ class LatestOrders extends BaseWidget
             Tables\Columns\TextColumn::make('status')
                 ->label('Status')
                 ->badge()
-                ->color(fn (string $s) => match ($s) {
-                    'paid' => 'success',
-                    'unpaid' => 'warning',
-                    'refunded' => 'danger',
-                    'void' => 'gray',
-                    default => 'gray',
+                ->color(fn (string $state) => match ($state) {
+                    'paid' => 'success', 'unpaid' => 'warning', 'refunded' => 'danger', 'void' => 'gray', default => 'gray',
                 })
                 ->sortable(),
 
@@ -61,7 +56,7 @@ class LatestOrders extends BaseWidget
             Tables\Columns\TextColumn::make('open')
                 ->label(' ')
                 ->formatStateUsing(fn () => 'Open')
-                ->url(fn ($record) => route('filament.admin.resources.sales.view', $record)) // sesuaikan id panel/path
+                ->url(fn ($record) => SaleResource::getUrl('view', ['record' => $record]))
                 ->color('primary')
                 ->weight('medium'),
         ];

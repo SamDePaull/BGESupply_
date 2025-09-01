@@ -26,4 +26,9 @@ class DashboardStatsOverview extends BaseWidget
                 ->icon('heroicon-o-queue-list'),
         ];
     }
+
+    protected function getColumns(): int
+    {
+            return 2;
+    }
 }
