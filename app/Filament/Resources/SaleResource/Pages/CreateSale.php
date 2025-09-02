@@ -18,10 +18,12 @@ use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Hidden;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CreateSale extends CreateRecord
 {
@@ -107,11 +109,14 @@ class CreateSale extends CreateRecord
                                     return null;
                                 })
                                 ->schema([
+                                    // --- helper tersembunyi: stok tersedia utk baris ini
+                                    Hidden::make('available_qty')->dehydrated(false),
+
                                     // 1) Product (search)
                                     Select::make('product_id')
                                         ->label('Product')
                                         ->searchable()
-                                        ->columnSpan(5)
+                                        ->columnSpan(4)
                                         ->getSearchResultsUsing(function (string $search): array {
                                             $driver = DB::connection()->getDriverName();
                                             $like = $driver === 'pgsql' ? 'ilike' : 'like';
@@ -133,11 +138,12 @@ class CreateSale extends CreateRecord
                                             $set('product_variant_id', null);
                                             $set('price', null);
                                             $set('qty', null);
+                                            $set('available_qty', null);
                                             self::recalcSummary($set, $get);
                                         })
                                         ->required(),
 
-                                    // 2) Varian (tergantung product)
+                                    // 2) Varian (tergantung product) — HANYA yang stok > 0
                                     Select::make('product_variant_id')
                                         ->label('Varian')
                                         ->columnSpan(4)
@@ -145,13 +151,23 @@ class CreateSale extends CreateRecord
                                         ->options(function (Get $get): array {
                                             $pid = $get('product_id');
                                             if (!$pid) return [];
+
+                                            // pilih hanya varian dengan stok tersedia > 0
                                             return ProductVariant::query()
-                                                ->where('product_id', $pid)
-                                                ->orderBy('title')
+                                                ->leftJoin('products', 'products.id', '=', 'product_variants.product_id')
+                                                ->where('product_variants.product_id', $pid)
+                                                ->whereRaw('COALESCE(product_variants.inventory_quantity, products.inventory_quantity, 0) > 0')
+                                                ->orderBy('product_variants.title')
+                                                ->select([
+                                                    'product_variants.*',
+                                                    DB::raw('COALESCE(product_variants.inventory_quantity, products.inventory_quantity, 0) as _available'),
+                                                ])
                                                 ->get()
                                                 ->mapWithKeys(function ($v) {
                                                     $var = trim((string) ($v->title ?? ''));
                                                     $label = $var !== '' && strcasecmp($var, 'Default Title') !== 0 ? $var : 'Default';
+                                                    // opsional: tampilkan stok → tidak mengubah layout
+                                                    $label .= ' · stok:' . (int)($v->_available ?? 0);
                                                     return [$v->id => $label];
                                                 })
                                                 ->all();
@@ -159,15 +175,48 @@ class CreateSale extends CreateRecord
                                         ->disabled(fn (Get $get) => blank($get('product_id')))
                                         ->reactive()
                                         ->afterStateUpdated(function ($state, Set $set, Get $get) {
-                                            // set harga dari varian & recalc
+                                            // set harga dari varian, stok tersedia & clamp qty
                                             $price = 0;
+                                            $available = 0;
+
                                             if ($state) {
-                                                $v = ProductVariant::find($state);
-                                                $price = (float)($v->price ?? 0);
+                                                $v = ProductVariant::with('product')->find($state);
+                                                if ($v) {
+                                                    $price = (float)($v->price ?? 0);
+                                                    $available = (int) ($v->inventory_quantity ?? $v->product?->inventory_quantity ?? 0);
+                                                    $available = max(0, $available);
+                                                }
                                             }
+
+                                            if ($available < 1) {
+                                                // Safety (jika race-condition stok habis)
+                                                $set('product_variant_id', null);
+                                                $set('available_qty', null);
+                                                $set('price', null);
+                                                $set('qty', null);
+                                                Notification::make()
+                                                    ->warning()
+                                                    ->title('Stok habis')
+                                                    ->body('Varian ini stoknya 0. Pilih varian lain.')
+                                                    ->send();
+                                                self::recalcSummary($set, $get);
+                                                return;
+                                            }
+
                                             $qty = max(1, (int)($get('qty') ?: 1));
+                                            if ($qty > $available) {
+                                                $qty = $available;
+                                                Notification::make()
+                                                    ->warning()
+                                                    ->title('Melebihi stok')
+                                                    ->body("Qty melebihi stok tersedia ({$available}). Qty disesuaikan.")
+                                                    ->send();
+                                            }
+
+                                            $set('available_qty', $available);
                                             $set('price', $price);
                                             $set('qty', $qty);
+
                                             self::recalcSummary($set, $get);
                                         })
                                         ->required(),
@@ -180,7 +229,7 @@ class CreateSale extends CreateRecord
                                         ->dehydrated(true)
                                         ->columnSpan(2),
 
-                                    // 4) Jumlah
+                                    // 4) Jumlah — clamp ke stok tersedia
                                     TextInput::make('qty')
                                         ->label('Jumlah')
                                         ->numeric()
@@ -188,11 +237,20 @@ class CreateSale extends CreateRecord
                                         ->reactive()
                                         ->afterStateUpdated(function ($state, Set $set, Get $get) {
                                             $qty = max(1, (int)$state);
+                                            $available = (int) ($get('available_qty') ?? 0);
+                                            if ($available > 0 && $qty > $available) {
+                                                $qty = $available;
+                                                Notification::make()
+                                                    ->warning()
+                                                    ->title('Melebihi stok')
+                                                    ->body("Qty melebihi stok tersedia ({$available}). Qty disesuaikan.")
+                                                    ->send();
+                                            }
                                             $set('qty', $qty);
                                             self::recalcSummary($set, $get);
                                         })
                                         ->required()
-                                        ->columnSpan(1),
+                                        ->columnSpan(2),
                                 ])
                                 // Fallback: bila state lain berubah
                                 ->afterStateUpdated(function ($state, Set $set, Get $get) {
@@ -324,16 +382,33 @@ class CreateSale extends CreateRecord
             foreach ($items as $row) {
                 $qty = max(1, (int)($row['qty'] ?? 0));
 
-                // pastikan ada varian
+                // pastikan ada varian & kunci baris untuk mencegah race-condition
                 $variant = null;
                 if (!empty($row['product_variant_id'])) {
-                    $variant = ProductVariant::with('product')->find($row['product_variant_id']);
+                    $variant = ProductVariant::with('product')
+                        ->where('id', $row['product_variant_id'])
+                        ->lockForUpdate()
+                        ->first();
                 } elseif (!empty($row['product_id'])) {
-                    $variant = ProductVariant::with('product')->where('product_id', $row['product_id'])->orderBy('id')->first();
+                    $variant = ProductVariant::with('product')
+                        ->where('product_id', $row['product_id'])
+                        ->orderBy('id')
+                        ->lockForUpdate()
+                        ->first();
                 }
 
                 $price = (float)($row['price'] ?? ($variant->price ?? 0));
                 $line  = $qty * $price;
+
+                // VALIDASI STOK: tidak boleh melebihi stok tersedia
+                if ($variant) {
+                    $available = (int) ($variant->inventory_quantity ?? $variant->product?->inventory_quantity ?? 0);
+                    if ($available < $qty) {
+                        throw ValidationException::withMessages([
+                            'items' => "Stok tidak cukup untuk {$variant->sku} (tersedia {$available}).",
+                        ]);
+                    }
+                }
 
                 // nama rapi
                 $computed = self::displayNameFromVariant($variant);
@@ -350,13 +425,15 @@ class CreateSale extends CreateRecord
                     'line_total'         => $line,
                 ]);
 
-                // kurangi stok
+                // Kurangi stok lokal secara aman (setelah validasi & lock)
                 if ($variant) {
                     if (!is_null($variant->inventory_quantity)) {
-                        $variant->decrement('inventory_quantity', $qty);
+                        $variant->inventory_quantity = max(0, (int)$variant->inventory_quantity - $qty);
+                        $variant->saveQuietly();
                     }
                     if ($variant->product && !is_null($variant->product->inventory_quantity)) {
-                        $variant->product->decrement('inventory_quantity', $qty);
+                        $variant->product->inventory_quantity = max(0, (int)$variant->product->inventory_quantity - $qty);
+                        $variant->product->saveQuietly();
                     }
                     if ($variant->product_id) {
                         $productIds[$variant->product_id] = true;

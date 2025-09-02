@@ -22,8 +22,8 @@ class SaleResource extends Resource
     protected static ?string $model = Sale::class;
 
     protected static ?string $navigationIcon   = 'heroicon-o-receipt-percent';
-    protected static ?string $navigationGroup  = 'Transaksi';
-    protected static ?int    $navigationSort   = 20;
+    protected static ?string $navigationLabel  = 'Transaksi';
+    protected static ?int    $navigationSort   = 3;
     protected static ?string $modelLabel       = 'Penjualan';
     protected static ?string $pluralModelLabel = 'Penjualan';
 

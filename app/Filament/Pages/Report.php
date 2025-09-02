@@ -15,8 +15,8 @@ class Report extends Page implements Forms\Contracts\HasForms
 
     protected static ?string $navigationIcon  = 'heroicon-o-rectangle-stack';
     // protected static ?string $navigationLabel = 'Laporan';
-    protected static ?string $navigationGroup = 'Laporan';
-    protected static ?int    $navigationSort  = 1;
+    protected static ?string $navigationLabel = 'Laporan';
+    protected static ?int    $navigationSort  = 4;
 
     protected static string $view = 'filament.pages.form-shell';
 

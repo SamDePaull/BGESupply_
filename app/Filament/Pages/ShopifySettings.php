@@ -11,8 +11,8 @@ class ShopifySettings extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
     protected static string $view = 'filament.pages.shopify-settings';
-    protected static ?string $navigationGroup = 'Pengaturan';
-    protected static ?int $navigationSort = 10;
+    protected static ?string $navigationLabel = 'Pengaturan';
+    protected static ?int $navigationSort = 5;
 
     public ?int $location_id = null;
 
