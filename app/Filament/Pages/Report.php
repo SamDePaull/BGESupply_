@@ -35,8 +35,8 @@ class Report extends Page implements Forms\Contracts\HasForms
 
     public function form(Forms\Form $form): Forms\Form
     {
-        $months = [1=>'Jan',2=>'Feb',3=>'Mar',4=>'Apr',5=>'Mei',6=>'Jun',7=>'Jul',8=>'Agu',9=>'Sep',10=>'Okt',11=>'Nov',12=>'Des'];
-        $years  = collect(range((int)now()->year - 5, (int)now()->year + 1))->mapWithKeys(fn($y)=>[$y=>$y])->all();
+        $months = [1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr', 5 => 'Mei', 6 => 'Jun', 7 => 'Jul', 8 => 'Agu', 9 => 'Sep', 10 => 'Okt', 11 => 'Nov', 12 => 'Des'];
+        $years  = collect(range((int)now()->year - 5, (int)now()->year + 1))->mapWithKeys(fn($y) => [$y => $y])->all();
 
         return $form
             ->statePath('data')
@@ -49,20 +49,19 @@ class Report extends Page implements Forms\Contracts\HasForms
                         Select::make('to_year')->label('Sampai Tahun')->options($years)->required(),
                     ]),
                     FormActions::make([
-                        FormActions\Action::make('download')
-                            ->label('Download PDF (Gabungan)')
-                            ->icon('heroicon-o-arrow-down-tray')
+                        FormActions\Action::make('preview')
+                            ->label('Preview PDF (Gabungan)')
+                            ->icon('heroicon-o-eye')
                             ->color('primary')
-                            ->action(function () {
+                            ->url(function () {
                                 $s = $this->form->getState();
-                                $url = route('reports.all.pdf', [
+                                return route('reports.all.pdf', [
                                     'from_month' => $s['from_month'] ?? now()->month,
                                     'from_year'  => $s['from_year']  ?? now()->year,
                                     'to_month'   => $s['to_month']   ?? now()->month,
                                     'to_year'    => $s['to_year']    ?? now()->year,
                                 ]);
-                                return redirect()->to($url);
-                            }),
+                            }, shouldOpenInNewTab: true),
                     ])->alignEnd(),
                 ])->collapsible(false),
             ]);

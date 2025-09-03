@@ -114,6 +114,10 @@ class ReportController extends Controller
             'lowStockCount'  => $lowStockCount,
         ])->setPaper('a4', 'portrait');
 
-        return $pdf->download('laporan-gabungan-' . $from->format('Ym') . '-' . $to->format('Ym') . '.pdf');
+        $filename = 'laporan-gabungan-' . $from->format('Ym') . '-' . $to->format('Ym') . '.pdf';
+        return response($pdf->output(), 200, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+        ]);
     }
 }

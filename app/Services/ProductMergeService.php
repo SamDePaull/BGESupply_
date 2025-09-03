@@ -107,14 +107,24 @@ class ProductMergeService
                 }
             }
 
-            // images
+            // images (OFFLINE)
             foreach (($s->images ?? []) as $i => $img) {
-                $path = ltrim((string)($img['path'] ?? ''), '/');
-                if ($path === '') continue;
-                $p->images()->firstOrCreate(
-                    ['file_path' => $path],
-                    ['position' => $i + 1, 'alt' => $img['alt'] ?? $p->title]
-                );
+                $path = ltrim(trim((string)($img['path'] ?? '')), '/');
+                if ($path === '') {
+                    continue; // jangan pernah buat gambar tanpa file_path
+                }
+
+                // Cari per file_path di dalam relasi produk
+                $image = $p->images()->firstOrNew(['file_path' => $path]);
+
+                // Set hanya kalau belum ada (hindari overwrite null/empty)
+                if (empty($image->file_path)) {
+                    $image->file_path = $path;
+                }
+
+                $image->position = $i + 1;
+                $image->alt = $img['alt'] ?? $p->title;
+                $image->saveQuietly();
             }
 
             $p->last_synced_at = now();
@@ -132,9 +142,10 @@ class ProductMergeService
     {
         $payload = $s->payload;
         $prod = $payload['product'] ?? $payload; // antisipasi bentuk
+
         return DB::transaction(function () use ($s, $prod) {
             $p = Product::updateOrCreate(
-                ['shopify_product_id' => (int)$prod['id']],
+                ['shopify_product_id' => (int)($prod['id'] ?? 0)],
                 [
                     'title' => $prod['title'] ?? 'Untitled',
                     'handle' => $prod['handle'] ?? null,
@@ -178,31 +189,59 @@ class ProductMergeService
                     'sync_enabled' => true,
                 ];
 
-                // match by shopify_variant_id or sku or options
-                $match = $p->variants()->where('shopify_variant_id', (int)($rv['id'] ?? 0))->first();
+                // match by shopify_variant_id or sku atau options
+                $match = null;
+                if (!empty($payload['shopify_variant_id'])) {
+                    $match = $p->variants()->where('shopify_variant_id', $payload['shopify_variant_id'])->first();
+                }
                 if (!$match && !empty($payload['sku'])) {
                     $match = $p->variants()->where('sku', $payload['sku'])->first();
                 }
                 if (!$match) {
-                    $match = $p->variants()->where(function ($q) use ($payload) {
-                        $q->where('option1_value', $payload['option1_value'])
-                            ->where('option2_value', $payload['option2_value'])
-                            ->where('option3_value', $payload['option3_value']);
-                    })->first();
+                    $match = $p->variants()
+                        ->where('option1_value', $payload['option1_value'])
+                        ->where('option2_value', $payload['option2_value'])
+                        ->where('option3_value', $payload['option3_value'])
+                        ->first();
                 }
 
-                if ($match) $match->fill($payload)->saveQuietly();
-                else $p->variants()->create($payload);
+                if ($match) {
+                    $match->fill($payload)->saveQuietly();
+                } else {
+                    $p->variants()->create($payload);
+                }
             }
 
-            // images
+            // images (SHOPIFY)
             foreach (($prod['images'] ?? []) as $i => $img) {
-                $src = $img['src'] ?? null;
-                if (!$src) continue;
-                $p->images()->firstOrCreate(
-                    ['shopify_image_id' => (int)($img['id'] ?? 0)],
-                    ['position' => $i + 1, 'alt' => $img['alt'] ?? $p->title, 'file_path' => $src]
-                );
+                $src = trim((string)($img['src'] ?? ''));
+                if ($src === '') {
+                    continue; // jangan pernah buat gambar tanpa file_path
+                }
+
+                $remoteId = isset($img['id']) ? (int)$img['id'] : 0;
+
+                // Gunakan key yang stabil: pakai shopify_image_id jika ada, kalau tidak fallback ke file_path
+                $conditions = $remoteId > 0
+                    ? ['shopify_image_id' => $remoteId]
+                    : ['file_path' => $src];
+
+                $image = $p->images()->firstOrNew($conditions);
+
+                // Pastikan file_path tidak pernah di-set null/empty.
+                if (empty($image->file_path)) {
+                    $image->file_path = $src;
+                }
+
+                $image->position = $i + 1;
+                $image->alt = $img['alt'] ?? $p->title;
+
+                // Simpan id Shopify bila ada (untuk kasus records lama yang belum terisi)
+                if ($remoteId > 0 && empty($image->shopify_image_id)) {
+                    $image->shopify_image_id = $remoteId;
+                }
+
+                $image->saveQuietly();
             }
 
             $p->last_synced_at = now();
