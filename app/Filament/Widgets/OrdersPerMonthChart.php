@@ -45,7 +45,7 @@ class OrdersPerMonthChart extends ChartWidget
                 ->all();
         }
 
-        $labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        $labels = ['Januari', 'Februari','Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
         $data   = [];
         for ($i = 1; $i <= 12; $i++) $data[] = (int) ($rows[$i] ?? 0);
 

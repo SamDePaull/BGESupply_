@@ -27,7 +27,7 @@ class RevenuePerMonthChart extends ChartWidget
         $driver = DB::connection()->getDriverName();
 
         // label bulan (ID)
-        $labels = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+        $labels = ['Januari', 'Februari','Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
         $data   = array_fill(0, 12, 0);
 
         // Query aman lintas DB (Postgres/MySQL/SQLite)

@@ -5,7 +5,6 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ProductResource\Pages;
 use App\Models\Category;
 use App\Models\Product;
-use App\Models\ProductImage;
 use Filament\Actions\ActionGroup;
 use Filament\Forms;
 use Filament\Forms\Components\{
@@ -95,8 +94,6 @@ class ProductResource extends Resource
                                             ->disk('public')
                                             ->imageEditor()
                                             ->columnSpan(6)
-                                            ->dehydrateStateUsing(fn($state, ?ProductImage $record) => $state ?: ($record?->file_path))
-                                            ->required(fn(?ProductImage $record) => $record === null || empty($record->file_path))
                                             ->helperText('Jalankan: php artisan storage:link'),
 
                                         TextInput::make('alt')->columnSpan(6),
@@ -143,7 +140,7 @@ class ProductResource extends Resource
                                 TextInput::make('inventory_quantity')
                                     ->numeric()
                                     ->default(0)
-                                    ->dehydrateStateUsing(fn($state) => (int) ($state ?? 0))
+                                    ->dehydrateStateUsing(fn ($state) => (int) ($state ?? 0))
                                     ->label('Stock (fallback)')
                                     ->columnSpan(4),
                             ]),
@@ -186,7 +183,7 @@ class ProductResource extends Resource
                                                 'name'   => trim((string) ($o['name'] ?? '')),
                                                 'values' => array_values(array_filter(array_map('trim', (array) ($o['values'] ?? [])))),
                                             ];
-                                        }, $options), fn($o) => $o['name'] !== '' && !empty($o['values'])));
+                                        }, $options), fn ($o) => $o['name'] !== '' && !empty($o['values'])));
                                         $options = array_slice($options, 0, 3);
 
                                         $set('option1_name', $options[0]['name'] ?? null);
@@ -212,8 +209,7 @@ class ProductResource extends Resource
                                             foreach ($existing as $ex) {
                                                 if (($ex['option1_value'] ?? null) === $o1
                                                     && ($ex['option2_value'] ?? null) === $o2
-                                                    && ($ex['option3_value'] ?? null) === $o3
-                                                ) {
+                                                    && ($ex['option3_value'] ?? null) === $o3) {
                                                     return $ex;
                                                 }
                                             }
@@ -268,15 +264,15 @@ class ProductResource extends Resource
                                     TextInput::make('barcode')->label('Barcode')->columnSpan(3),
 
                                     TextInput::make('price')->numeric()
-                                        ->dehydrateStateUsing(fn($state) => $state === '' ? null : $state)
+                                        ->dehydrateStateUsing(fn ($state) => $state === '' ? null : $state)
                                         ->label('Price')->columnSpan(3),
 
                                     TextInput::make('compare_at_price')->numeric()
-                                        ->dehydrateStateUsing(fn($state) => $state === '' ? null : $state)
+                                        ->dehydrateStateUsing(fn ($state) => $state === '' ? null : $state)
                                         ->label('Compare at')->columnSpan(3),
 
                                     TextInput::make('inventory_quantity')->numeric()->default(0)
-                                        ->dehydrateStateUsing(fn($state) => (int) ($state ?? 0))
+                                        ->dehydrateStateUsing(fn ($state) => (int) ($state ?? 0))
                                         ->label('Stock')->columnSpan(3),
 
                                     Toggle::make('requires_shipping')->label('Ship')->default(true)->columnSpan(2),
@@ -338,7 +334,7 @@ class ProductResource extends Resource
                         ->schema([
                             Select::make('category_id')
                                 ->label('Category')
-                                ->options(fn() => Category::orderBy('name')->pluck('name', 'id'))
+                                ->options(fn () => Category::orderBy('name')->pluck('name', 'id'))
                                 ->searchable()
                                 ->preload()
                                 ->native(false)
@@ -347,7 +343,7 @@ class ProductResource extends Resource
                                     Forms\Components\TextInput::make('name')->required(),
                                     Forms\Components\TextInput::make('shopify_category')->label('Shopify Category (optional)'),
                                 ])
-                                ->createOptionAction(fn($action) => $action->modalHeading('Add Category')),
+                                ->createOptionAction(fn ($action) => $action->modalHeading('Add Category')),
 
                             TextInput::make('product_type')->label('Product Type'),
                             TextInput::make('vendor')->label('Vendor'),
@@ -404,7 +400,7 @@ class ProductResource extends Resource
                 Tables\Columns\TextColumn::make('price')
                     ->label('Price')
                     ->sortable()
-                    ->formatStateUsing(fn($state) => is_null($state) ? '-' : 'Rp ' . number_format((float) $state, 0, ',', '.')),
+                    ->formatStateUsing(fn ($state) => is_null($state) ? '-' : 'Rp ' . number_format((float) $state, 0, ',', '.')),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->colors([
@@ -423,7 +419,7 @@ class ProductResource extends Resource
                 ]),
                 Filter::make('low_stock')
                     ->label('Stok < 5')
-                    ->query(fn(EloquentBuilder $q) => $q->where('inventory_quantity', '<', 5)),
+                    ->query(fn (EloquentBuilder $q) => $q->where('inventory_quantity', '<', 5)),
             ])
             ->defaultSort('updated_at', 'desc')
             ->striped()
@@ -433,14 +429,14 @@ class ProductResource extends Resource
             ->actions([
                 Tables\Actions\Action::make('toggleSync')
                     ->label(null)
-                    ->icon(fn($record) => $record->sync_enabled ? 'heroicon-o-link-slash' : 'heroicon-o-link')
-                    ->color(fn($record) => $record->sync_enabled ? 'warning' : 'success')
+                    ->icon(fn ($record) => $record->sync_enabled ? 'heroicon-o-link-slash' : 'heroicon-o-link')
+                    ->color(fn ($record) => $record->sync_enabled ? 'warning' : 'success')
                     ->iconButton()
                     ->size(ActionSize::Small)
-                    ->tooltip(fn($record) => $record->sync_enabled ? 'Putus Sinkronisasi' : 'Aktifkan Sinkronisasi')
+                    ->tooltip(fn ($record) => $record->sync_enabled ? 'Putus Sinkronisasi' : 'Aktifkan Sinkronisasi')
                     ->requiresConfirmation()
-                    ->modalHeading(fn($record) => $record->sync_enabled ? 'Putus sinkronisasi produk ini?' : 'Aktifkan sinkronisasi produk ini?')
-                    ->modalDescription(fn($record) => $record->sync_enabled
+                    ->modalHeading(fn ($r) => $r->sync_enabled ? 'Putus sinkronisasi produk ini?' : 'Aktifkan sinkronisasi produk ini?')
+                    ->modalDescription(fn ($r) => $r->sync_enabled
                         ? 'Produk ini tidak akan lagi diperbarui otomatis ke Shopify sampai Anda mengaktifkannya kembali.'
                         : 'Produk ini akan kembali mengikuti pembaruan otomatis ke Shopify.')
                     ->modalSubmitActionLabel('Lanjutkan')
@@ -457,12 +453,12 @@ class ProductResource extends Resource
                     ->iconButton()
                     ->size(ActionSize::Small)
                     ->tooltip('Push ke Shopify')
-                    ->visible(fn($record) => $record->sync_enabled)
+                    ->visible(fn ($record) => $record->sync_enabled)
                     ->requiresConfirmation()
                     ->modalHeading('Kirim pembaruan ke Shopify?')
                     ->modalDescription('Tindakan ini akan memperbarui produk di Shopify sesuai data saat ini.')
                     ->modalSubmitActionLabel('Push sekarang')
-                    ->action(fn($record) => app(\App\Services\ShopifyPushService::class)->updateOnShopify($record)),
+                    ->action(fn ($record) => app(\App\Services\ShopifyPushService::class)->updateOnShopify($record)),
 
                 Tables\Actions\Action::make('deleteBoth')
                     ->label(null)
