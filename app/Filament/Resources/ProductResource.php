@@ -402,6 +402,19 @@ class ProductResource extends Resource
                     ->label('Price')
                     ->sortable()
                     ->formatStateUsing(fn ($state) => is_null($state) ? '-' : 'Rp ' . number_format((float) $state, 0, ',', '.')),
+
+                    Tables\Columns\TextColumn::make('inventory_quantity')
+                    ->label('Stok')
+                    // tampilkan angka stok; jika < 5 tambahkan teks " (stok menipis)"
+                    ->state(function (\App\Models\Product $record) {
+                        $qty = (int) ($record->inventory_quantity ?? 0);
+                        return $qty < 5 ? $qty . ' (stok menipis)' : (string) $qty;
+                    })
+                    ->badge()
+                    // warna merah kalau stok < 5, normal jika tidak
+                    ->color(fn (\App\Models\Product $record) => ($record->inventory_quantity ?? 0) < 5 ? 'danger' : null)
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->colors([
@@ -483,6 +496,8 @@ class ProductResource extends Resource
                         $record->delete();
                         Notification::make()->title('Produk dihapus')->body('Dihapus dari Shopify (jika ada) dan database.')->success()->send();
                     }),
+
+                    
 
                 Tables\Actions\EditAction::make()
                     ->label(null)
@@ -571,3 +586,4 @@ class ProductResource extends Resource
         ];
     }
 }
+
