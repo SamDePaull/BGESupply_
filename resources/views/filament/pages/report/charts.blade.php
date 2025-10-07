@@ -23,7 +23,7 @@
     </div>
 
     {{-- CHARTS --}}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    {{-- <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
             <div class="mb-2 font-semibold">Pendapatan per Bulan</div>
             <div class="h-64">
@@ -40,7 +40,7 @@
                 <canvas id="methodChart"></canvas>
             </div>
         </div>
-    </div>
+    </div> --}}
 </div>
 
 {{-- Payload JSON untuk grafik (tanpa @json) --}}

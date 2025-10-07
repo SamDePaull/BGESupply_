@@ -108,61 +108,61 @@ class ProductResource extends Resource
                         ->compact(),
 
                     // ===== Pricing (mirip contoh) =====
-                    Section::make('Pricing')
-                        ->schema([
-                            Grid::make(12)->schema([
-                                TextInput::make('price')
-                                    ->numeric()
-                                    ->label('Price')
-                                    ->prefix('Rp')
-                                    ->columnSpan(4),
+                    // Section::make('Pricing')
+                    //     ->schema([
+                    //         Grid::make(12)->schema([
+                    //             TextInput::make('price')
+                    //                 ->numeric()
+                    //                 ->label('Price')
+                    //                 ->prefix('Rp')
+                    //                 ->columnSpan(4),
 
-                                TextInput::make('compare_at_price')
-                                    ->numeric()
-                                    ->label('Compare at')
-                                    ->prefix('Rp')
-                                    ->columnSpan(4),
+                    //             TextInput::make('compare_at_price')
+                    //                 ->numeric()
+                    //                 ->label('Compare at')
+                    //                 ->prefix('Rp')
+                    //                 ->columnSpan(4),
 
-                                TextInput::make('cost_price')
-                                    ->numeric()
-                                    ->label('Cost')
-                                    ->prefix('Rp')
-                                    ->columnSpan(4),
-                            ]),
-                        ])
-                        ->compact(),
+                    //             TextInput::make('cost_price')
+                    //                 ->numeric()
+                    //                 ->label('Cost')
+                    //                 ->prefix('Rp')
+                    //                 ->columnSpan(4),
+                    //         ]),
+                    //     ])
+                    //     ->compact(),
 
                     // ===== Inventory (fallback) + Vendor (dipindah ke kanan -> Associations),
                     // tapi stok fallback tetap di kiri agar dekat konteks harga =====
-                    Section::make('Inventory (fallback)')
-                        ->schema([
-                            Grid::make(12)->schema([
-                                TextInput::make('inventory_quantity')
-                                    ->numeric()
-                                    ->default(0)
-                                    ->dehydrateStateUsing(fn ($state) => (int) ($state ?? 0))
-                                    ->label('Stock (fallback)')
-                                    ->columnSpan(4),
-                            ]),
-                        ])
-                        ->compact(),
+                    // Section::make('Inventory (fallback)')
+                    //     ->schema([
+                    //         Grid::make(12)->schema([
+                    //             TextInput::make('inventory_quantity')
+                    //                 ->numeric()
+                    //                 ->default(0)
+                    //                 ->dehydrateStateUsing(fn ($state) => (int) ($state ?? 0))
+                    //                 ->label('Stock (fallback)')
+                    //                 ->columnSpan(4),
+                    //         ]),
+                    //     ])
+                    //     ->compact(),
 
                     // ===== Shipping & Tax =====
-                    Section::make('Shipping & Tax')
-                        ->schema([
-                            Fieldset::make('')->schema([
-                                Toggle::make('requires_shipping')->label('Requires shipping')->default(true),
-                                Toggle::make('taxable')->label('Taxable')->default(true),
-                                TextInput::make('weight')->numeric()->label('Weight'),
-                                Select::make('weight_unit')->options([
-                                    'g' => 'g',
-                                    'kg' => 'kg',
-                                    'oz' => 'oz',
-                                    'lb' => 'lb',
-                                ])->default('g'),
-                            ])->columns(4),
-                        ])
-                        ->compact(),
+                    // Section::make('Shipping & Tax')
+                    //     ->schema([
+                    //         Fieldset::make('')->schema([
+                    //             Toggle::make('requires_shipping')->label('Requires shipping')->default(true),
+                    //             Toggle::make('taxable')->label('Taxable')->default(true),
+                    //             TextInput::make('weight')->numeric()->label('Weight'),
+                    //             Select::make('weight_unit')->options([
+                    //                 'g' => 'g',
+                    //                 'kg' => 'kg',
+                    //                 'oz' => 'oz',
+                    //                 'lb' => 'lb',
+                    //             ])->default('g'),
+                    //         ])->columns(4),
+                    //     ])
+                    //     ->compact(),
 
                     // ===== Variants (Options → Variants) =====
                     Section::make('Variants (Options → Variants)')
@@ -334,6 +334,7 @@ class ProductResource extends Resource
                         ->schema([
                             Select::make('category_id')
                                 ->label('Category')
+                                ->relationship('category', 'name')
                                 ->options(fn () => Category::orderBy('name')->pluck('name', 'id'))
                                 ->searchable()
                                 ->preload()
@@ -427,38 +428,38 @@ class ProductResource extends Resource
 
             // Row actions
             ->actions([
-                Tables\Actions\Action::make('toggleSync')
-                    ->label(null)
-                    ->icon(fn ($record) => $record->sync_enabled ? 'heroicon-o-link-slash' : 'heroicon-o-link')
-                    ->color(fn ($record) => $record->sync_enabled ? 'warning' : 'success')
-                    ->iconButton()
-                    ->size(ActionSize::Small)
-                    ->tooltip(fn ($record) => $record->sync_enabled ? 'Putus Sinkronisasi' : 'Aktifkan Sinkronisasi')
-                    ->requiresConfirmation()
-                    ->modalHeading(fn ($r) => $r->sync_enabled ? 'Putus sinkronisasi produk ini?' : 'Aktifkan sinkronisasi produk ini?')
-                    ->modalDescription(fn ($r) => $r->sync_enabled
-                        ? 'Produk ini tidak akan lagi diperbarui otomatis ke Shopify sampai Anda mengaktifkannya kembali.'
-                        : 'Produk ini akan kembali mengikuti pembaruan otomatis ke Shopify.')
-                    ->modalSubmitActionLabel('Lanjutkan')
-                    ->action(function ($record) {
-                        $record->sync_enabled = !$record->sync_enabled;
-                        $record->saveQuietly();
-                        Notification::make()->title('Status sinkronisasi diperbarui')->success()->send();
-                    }),
+                // Tables\Actions\Action::make('toggleSync')
+                //     ->label(null)
+                //     ->icon(fn ($record) => $record->sync_enabled ? 'heroicon-o-link-slash' : 'heroicon-o-link')
+                //     ->color(fn ($record) => $record->sync_enabled ? 'warning' : 'success')
+                //     ->iconButton()
+                //     ->size(ActionSize::Small)
+                //     ->tooltip(fn ($record) => $record->sync_enabled ? 'Putus Sinkronisasi' : 'Aktifkan Sinkronisasi')
+                //     ->requiresConfirmation()
+                //     ->modalHeading(fn ($r) => $r->sync_enabled ? 'Putus sinkronisasi produk ini?' : 'Aktifkan sinkronisasi produk ini?')
+                //     ->modalDescription(fn ($r) => $r->sync_enabled
+                //         ? 'Produk ini tidak akan lagi diperbarui otomatis ke Shopify sampai Anda mengaktifkannya kembali.'
+                //         : 'Produk ini akan kembali mengikuti pembaruan otomatis ke Shopify.')
+                //     ->modalSubmitActionLabel('Lanjutkan')
+                //     ->action(function ($record) {
+                //         $record->sync_enabled = !$record->sync_enabled;
+                //         $record->saveQuietly();
+                //         Notification::make()->title('Status sinkronisasi diperbarui')->success()->send();
+                //     }),
 
-                Tables\Actions\Action::make('pushToShopify')
-                    ->label(null)
-                    ->icon('heroicon-o-cloud-arrow-up')
-                    ->color('primary')
-                    ->iconButton()
-                    ->size(ActionSize::Small)
-                    ->tooltip('Push ke Shopify')
-                    ->visible(fn ($record) => $record->sync_enabled)
-                    ->requiresConfirmation()
-                    ->modalHeading('Kirim pembaruan ke Shopify?')
-                    ->modalDescription('Tindakan ini akan memperbarui produk di Shopify sesuai data saat ini.')
-                    ->modalSubmitActionLabel('Push sekarang')
-                    ->action(fn ($record) => app(\App\Services\ShopifyPushService::class)->updateOnShopify($record)),
+                // Tables\Actions\Action::make('pushToShopify')
+                //     ->label(null)
+                //     ->icon('heroicon-o-cloud-arrow-up')
+                //     ->color('primary')
+                //     ->iconButton()
+                //     ->size(ActionSize::Small)
+                //     ->tooltip('Push ke Shopify')
+                //     ->visible(fn ($record) => $record->sync_enabled)
+                //     ->requiresConfirmation()
+                //     ->modalHeading('Kirim pembaruan ke Shopify?')
+                //     ->modalDescription('Tindakan ini akan memperbarui produk di Shopify sesuai data saat ini.')
+                //     ->modalSubmitActionLabel('Push sekarang')
+                //     ->action(fn ($record) => app(\App\Services\ShopifyPushService::class)->updateOnShopify($record)),
 
                 Tables\Actions\Action::make('deleteBoth')
                     ->label(null)

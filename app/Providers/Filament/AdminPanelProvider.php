@@ -27,7 +27,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->brandName('BGE Supply Admin')
-            ->brandLogo(asset('logo.svg')) // taruh file logo publik kalau ada
+            ->brandLogo(asset('logo.jpg')) // taruh file logo publik kalau ada
             ->colors([
                 'primary' => Color::Amber,
             ])
